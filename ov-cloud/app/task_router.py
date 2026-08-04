@@ -158,9 +158,12 @@ class TaskRouter:
         await slack.post_result(task, res)
 
     async def decide_permission(self, permission_id: str, approved: bool) -> None:
-        """Slack button -> runner. Locate the task that owns this permission."""
-        for task in self.tasks.values():
-            if permission_id in task.permission_msgs:
+        """Slack button -> runner. Locate the task that owns this permission.
+        Newest first: ACP request ids restart from 0 in each agent process,
+        so stale tasks collide; also skip tasks whose runner is gone."""
+        for task in reversed(list(self.tasks.values())):
+            if permission_id in task.permission_msgs \
+                    and task.runner in self.runners.values():
                 await task.runner.ws.send_text(encode(p.PermissionDecision(
                     task_id=task.task_id, permission_id=permission_id, approved=approved)))
                 del task.permission_msgs[permission_id]
