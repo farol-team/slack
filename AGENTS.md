@@ -1,79 +1,82 @@
 # AGENTS.md — Slack Memory / Agent Bridge
 
-## Обзор проекта
+## Project overview
 
-Монорепозиторий из трёх компонентов, вместе образующих сервис «Slack Memory / Agent
-Bridge»: упоминание бота в Slack превращается в задачу, которая выполняется локальным
-coding-агентом на машине разработчика, а память команды хранится в OpenViking.
+Monorepo of three components that together form the "Slack Memory / Agent Bridge"
+service: mentioning the bot in Slack turns into a task executed by a local coding
+agent on a developer's machine, while team memory is stored in OpenViking.
 
 ```
  Slack ──Events API──► ov-cloud (Python/FastAPI) ──wss──► ov-runner (Rust/Tauri)
-      ◄──рендер в тред──        ▲                            │ spawn
+      ◄──render to thread──     ▲                            │ spawn
                                 │ tRPC (x-internal-secret)   ▼
-                          app/ (SaaS-панель,          локальный агент
+                          app/ (SaaS panel,           local agent
                           React + Hono + MySQL)       claude/gemini --acp (stdio)
 ```
 
-- **`app/`** — SaaS-панель управления (control plane): веб-интерфейс на React 19 + Vite,
-  бэкенд на Hono + tRPC, MySQL через Drizzle ORM, аутентификация через Kimi OAuth.
-  Хранит воркспейсы, runner'ы, каналы, задачи и Slack-инсталляции (bot tokens).
-- **`ov-cloud/`** — облачный сервис (data plane) на Python/FastAPI: принимает Slack Events
-  (Slack Bolt), держит WebSocket `/runner/v1` для runner'ов, маршрутизирует задачи
-  (`TaskRouter`), стримит события обратно в Slack, пишет сообщения каналов в OpenViking.
-  Bot token резолвится per-team через tRPC-API `app/` (`slack.installationByTeam`,
-  заголовок `x-internal-secret`); не хранит токены сам.
-- **`ov-runner/`** — тонкий клиент на Rust: Cargo workspace с ядром `crates/runner-core`
-  и Tauri 2 десктоп-приложением `apps/desktop`. Живёт в трее, держит **исходящее**
-  wss-соединение с облаком (ноль открытых портов), выполняет задачи на локальном агенте
-  через ACP (JSON-RPC 2.0 поверх stdio).
+- **`app/`** — SaaS control plane: web UI on React 19 + Vite, backend on
+  Hono + tRPC, MySQL via Drizzle ORM, authentication via Kimi OAuth.
+  Stores workspaces, runners, channels, tasks, and Slack installations (bot tokens).
+- **`ov-cloud/`** — cloud service (data plane) on Python/FastAPI: receives Slack
+  Events (Slack Bolt), holds the `/runner/v1` WebSocket for runners, routes tasks
+  (`TaskRouter`), streams events back to Slack, writes channel messages to OpenViking.
+  The bot token is resolved per-team via `app/`'s tRPC API (`slack.installationByTeam`,
+  `x-internal-secret` header); it does not store tokens itself.
+- **`ov-runner/`** — thin Rust client: Cargo workspace with the `crates/runner-core`
+  core and a Tauri 2 desktop app in `apps/desktop`. Lives in the tray, holds an
+  **outbound** wss connection to the cloud (zero open ports), executes tasks on a
+  local agent via ACP (JSON-RPC 2.0 over stdio).
 
-Модель памяти: Slack workspace = OpenViking account (граница tenant'а); сообщения каналов
-батчами (50 шт / 5 мин) пишутся в `/{workspace}/resources/slack/{channel}/{date}.md`;
-агент получает MCP endpoint OpenViking через `AssignTask.memory`.
+Memory model: Slack workspace = OpenViking account (tenant boundary); channel
+messages are written in batches (50 msgs / 5 min) to
+`/{workspace}/resources/slack/{channel}/{date}.md`; the agent receives the
+OpenViking MCP endpoint via `AssignTask.memory`.
 
-## Структура кода
+## Code structure
 
 ### app/ (TypeScript, Node 20, ESM)
-- `api/` — серверная часть: `boot.ts` (точка входа Hono), `router.ts` (корневой tRPC
+- `api/` — server side: `boot.ts` (Hono entry point), `router.ts` (root tRPC
   router: `auth`, `workspace`, `runner`, `memory`, `billing`, `slack`),
-  `middleware.ts` (процедуры `publicQuery`/`authedQuery`/`adminQuery`),
-  `saas-router.ts` (доменная логика SaaS), `slack-oauth.ts` (OAuth v2 «Add to Slack»),
-  `kimi/` (Kimi OAuth), `queries/` (доступ к БД), `lib/` (env, cookies, vite-интеграция).
-- `contracts/` — типы/константы, общие для клиента и сервера (re-export типов из `db/schema`).
+  `middleware.ts` (`publicQuery`/`authedQuery`/`adminQuery` procedures),
+  `saas-router.ts` (SaaS domain logic), `slack-oauth.ts` (OAuth v2 "Add to Slack"),
+  `kimi/` (Kimi OAuth), `queries/` (DB access), `lib/` (env, cookies, vite integration).
+- `contracts/` — types/constants shared between client and server (re-exports types from `db/schema`).
 - `db/` — Drizzle ORM: `schema.ts`, `relations.ts`, `seed.ts`, `migrations/` (MySQL).
-- `src/` — фронтенд: `main.tsx`, `App.tsx` (react-router: `/`, `/login`,
+- `src/` — frontend: `main.tsx`, `App.tsx` (react-router: `/`, `/login`,
   `/dashboard/{runners,memory,settings}`), `pages/`, `components/ui/` (shadcn, 40+
-  компонентов), `hooks/`, `providers/trpc.tsx`.
-- Алиасы путей (vite + tsconfig): `@/* → src/*`, `@contracts/* → contracts/*`,
+  components), `hooks/`, `providers/trpc.tsx`.
+- Path aliases (vite + tsconfig): `@/* → src/*`, `@contracts/* → contracts/*`,
   `@db/* → db/*`.
 
 ### ov-cloud/ (Python 3.12)
-- `app/protocol.py` — pydantic-модели протокола, зеркало `protocol.rs`.
-- `app/task_router.py` — реестр runner'ов и жизненный цикл задач (in-memory).
-- `app/slack_app.py` — Slack Bolt: mentions, кнопки Approve/Deny/Stop, IngestionBuffer.
-- `app/memory.py` — HTTP-клиент OpenViking. `app/importer.py` — импорт истории каналов.
+- `app/protocol.py` — pydantic protocol models, mirror of `protocol.rs`.
+- `app/task_router.py` — runner registry and task lifecycle (in-memory).
+- `app/slack_app.py` — Slack Bolt: mentions, Approve/Deny/Stop buttons, IngestionBuffer.
+- `app/memory.py` — OpenViking HTTP client. `app/importer.py` — channel history import.
 - `app/main.py` — FastAPI: `/runner/v1` (WS), `/slack/events`, `/internal/import/*`
-  (защищены `x-internal-secret`), `/healthz`.
+  (protected by `x-internal-secret`), `/healthz`.
 
 ### ov-runner/ (Rust, edition 2021)
-- `crates/runner-core/src/` — `protocol.rs` (контракт сообщений, serde tagged union),
-  `acp.rs` (ACP-клиент), `cloud.rs` (WS loop с reconnect/backoff), `session.rs`
-  (SessionManager), `config.rs` (конфиг + OS keychain для токена).
-- `apps/desktop/` — Tauri 2: `ui/index.html` (без сборщика, withGlobalTauri),
-  `src-tauri/` (tray, IPC-команды, автозапуск).
+- `crates/runner-core/src/` — `protocol.rs` (message contract, serde tagged union),
+  `acp.rs` (ACP client), `cloud.rs` (WS loop with reconnect/backoff), `session.rs`
+  (SessionManager), `config.rs` (config + OS keychain for the token).
+- `crates/runner-core/examples/headless.rs` — headless runner without the Tauri UI
+  (dev debugging and E2E tests).
+- `apps/desktop/` — Tauri 2: `ui/index.html` (no bundler, withGlobalTauri),
+  `src-tauri/` (tray, IPC commands, autostart).
 
-## Команды сборки и тестирования
+## Build and test commands
 
 ### app/ (npm)
 ```bash
-npm run dev           # Vite dev-сервер на :3000 (Hono через @hono/vite-dev-server)
+npm run dev           # Vite dev server on :3000 (Hono via @hono/vite-dev-server)
 npm run build         # vite build + esbuild api/boot.ts → dist/boot.js
-npm start             # NODE_ENV=production node dist/boot.js (порт PORT или 3000)
-npm run check         # tsc -b (проверка типов, tsconfig.app/node/server)
+npm start             # NODE_ENV=production node dist/boot.js (PORT or 3000)
+npm run check         # tsc -b (type check, tsconfig.app/node/server)
 npm run lint          # eslint .
 npm run format        # prettier --write .
-npm test              # vitest run (только api/**/*.test.ts|spec.ts)
-npm run db:generate   # drizzle-kit generate (нужен DATABASE_URL)
+npm test              # vitest run (api/**/*.test.ts|spec.ts only)
+npm run db:generate   # drizzle-kit generate (needs DATABASE_URL)
 npm run db:migrate    # drizzle-kit migrate
 npm run db:push       # drizzle-kit push
 ```
@@ -81,72 +84,80 @@ npm run db:push       # drizzle-kit push
 ### ov-cloud/ (Python)
 ```bash
 cp .env.example .env
-docker compose up --build   # поднимает сервис на :8000 + OpenViking на :1933
-# локально: pip install -r requirements.txt && uvicorn app.main:app --port 8000
+docker compose up --build   # brings up the service on :8000 + OpenViking on :1933
+# locally: pip install -r requirements.txt && uvicorn app.main:app --port 8000
 ```
 
 ### ov-runner/ (Rust)
 ```bash
-cargo check                        # проверка ядра (в корне ov-runner/)
+cargo check                        # check the core (from ov-runner/ root)
 cd apps/desktop && npm install
 npm run dev                        # cargo tauri dev
 npm run build                      # cargo tauri build (.app/.msi/.deb)
+
+# headless runner without the Tauri UI (for dev/E2E):
+OV_RUNNER_TOKEN=ovr_... cargo run -p runner-core --example headless
 ```
-Требования: Rust stable, Node 18+, системные зависимости Tauri 2.
+The headless-mode token is taken from the `OV_RUNNER_TOKEN` env var, otherwise from
+the OS keychain; config is the standard `RunnerConfig::load()`.
 
-## Соглашения по коду
+Requirements: Rust stable, Node 18+, Tauri 2 system dependencies.
 
-- **Языки документации/комментариев:** русский в `ov-cloud/` и `ov-runner/`, английский
-  в `app/` (шаблонный код). Следуйте языку окружающего файла.
+## Code conventions
+
+- **Documentation/comment language:** English everywhere. (Legacy comments in
+  `ov-cloud/` and `ov-runner/` may still be in Russian — translate opportunistically
+  when touching them.)
 - **app/**: Prettier (double quotes, semi, trailing comma es5, width 80), ESLint flat
-  config (tseslint recommended + react-hooks + react-refresh). tRPC-процедуры через
-  `publicQuery` / `authedQuery` / `adminQuery` из `api/middleware.ts`; трансформер —
-  superjson. UI — shadcn-компоненты из `@/components/ui`.
-- **Схема БД** (`app/db/schema.ts`): PK — `serial()`; FK на serial PK обязаны быть
-  `bigint("col", { mode: "number", unsigned: true })`. Enum'ы — `mysqlEnum`.
-- **Протокол cloud ↔ runner — двойное зеркало**: `ov-runner/crates/runner-core/src/protocol.rs`
-  (serde, `#[serde(tag = "type", rename_all = "snake_case")]`) и
-  `ov-cloud/app/protocol.py` (pydantic) должны меняться синхронно; snake_case-теги и
-  имена полей совпадают 1-в-1. Контракт проверен round-trip сериализацией.
-- Сообщения протокола: `hello`, `assign_task`, `task_event`, `permission_decision`,
+  config (tseslint recommended + react-hooks + react-refresh). tRPC procedures go
+  through `publicQuery` / `authedQuery` / `adminQuery` from `api/middleware.ts`;
+  transformer — superjson. UI — shadcn components from `@/components/ui`.
+- **DB schema** (`app/db/schema.ts`): PKs are `serial()`; FKs referencing serial PKs
+  must be `bigint("col", { mode: "number", unsigned: true })`. Enums — `mysqlEnum`.
+- **Cloud ↔ runner protocol is a double mirror**: `ov-runner/crates/runner-core/src/protocol.rs`
+  (serde, `#[serde(tag = "type", rename_all = "snake_case")]`) and
+  `ov-cloud/app/protocol.py` (pydantic) must change in lockstep; snake_case tags and
+  field names match 1-to-1. The contract is verified by round-trip serialization.
+- Protocol messages: `hello`, `assign_task`, `task_event`, `permission_decision`,
   `cancel_task`, `task_result`, `ping`/`pong`, `error`.
 
-## Тестирование
+## Testing
 
-- Витест настроен в `app/` (`vitest.config.ts`, environment `node`, include
-  `api/**/*.test.ts` / `*.spec.ts`) — **тестов пока нет**; новые тесты кладите рядом с
-  кодом в `api/` под эти паттерны.
-- В `ov-cloud/` и `ov-runner/` тестов нет; для runner'а запланированы mock-агент по ACP
-  и mock-cloud по протоколу (см. `ov-runner/README.md`).
-- Минимальная проверка перед сдачей: `npm run check` + `npm run lint` (app),
-  `cargo check` (ov-runner), импорт/запуск uvicorn (ov-cloud).
+- Vitest is configured in `app/` (`vitest.config.ts`, `node` environment, includes
+  `api/**/*.test.ts` / `*.spec.ts`) — **no tests yet**; place new tests next to the
+  code in `api/` matching these patterns.
+- No tests in `ov-cloud/` or `ov-runner/`; for the runner, a mock ACP agent and a
+  mock cloud speaking the protocol are planned (see `ov-runner/README.md`).
+- Minimal pre-submit check: `npm run check` + `npm run lint` (app),
+  `cargo check` (ov-runner), uvicorn import/startup (ov-cloud).
 
-## Безопасность
+## Security
 
-- Секреты только через env: `app/.env.example`, `ov-cloud/.env.example` — шаблоны;
-  реальные `.env` не коммитить (есть в `.gitignore`).
-- Runner-токены (`ovr_{workspace}_{userkey}`): в БД хранится только SHA-256-хэш
-  (`runners.tokenHash`); на клиенте токен — в OS keychain, не в файле.
-- Slack bot tokens хранятся в `slack_installations` (пометка в коде: production —
-  шифровать через KMS). Внутренние вызовы SaaS ↔ ov-cloud защищены заголовком
-  `x-internal-secret` (`INTERNAL_API_SECRET`).
-- На runner'е `allowed_cwds` — жёсткий allowlist директорий для задач; destructive
-  actions агента подтверждаются кнопками Approve/Deny в Slack.
-- Slack OAuth state — одноразовые токены в `slack_oauth_states` (CSRF-защита).
+- Secrets only via env: `app/.env.example`, `ov-cloud/.env.example` are templates;
+  do not commit real `.env` files (covered by `.gitignore`).
+- Runner tokens (`ovr_{workspace}_{userkey}`): the DB stores only the SHA-256 hash
+  (`runners.tokenHash`); on the client the token lives in the OS keychain, not in a file.
+- Slack bot tokens are stored in `slack_installations` (note in code: encrypt via KMS
+  in production). Internal SaaS ↔ ov-cloud calls are protected by the
+  `x-internal-secret` header (`INTERNAL_API_SECRET`).
+- On the runner, `allowed_cwds` is a hard allowlist of task directories; destructive
+  agent actions are confirmed via Approve/Deny buttons in Slack.
+- Slack OAuth state — one-time tokens in `slack_oauth_states` (CSRF protection).
 
-## Деплой и окружение
+## Deployment and environment
 
-- **ov-cloud**: `docker compose up --build` (Dockerfile на `python:3.12-slim`, uvicorn
-  на :8000) + sidecar `volcengine/openviking:latest` на :1933 (volume `ov-data`).
-- **app**: `npm run build && npm start`; статика из `dist/public`, сервер — `dist/boot.js`.
-- **ov-runner**: Tauri-бандлы (`npm run build` в `apps/desktop`), планируются подпись и
-  автообновления (`tauri-plugin-updater`).
+- **ov-cloud**: `docker compose up --build` (Dockerfile on `python:3.12-slim`, uvicorn
+  on :8000) + `volcengine/openviking:latest` sidecar on :1933 (volume `ov-data`).
+- **app**: `npm run build && npm start`; static files from `dist/public`, server — `dist/boot.js`.
+- **ov-runner**: Tauri bundles (`npm run build` in `apps/desktop`); signing and
+  auto-updates (`tauri-plugin-updater`) are planned.
 - Slack app: Request URL → `https://<host>/slack/events` (ov-cloud), Redirect URL →
-  `https://<saas-host>/api/slack/callback` (app); scopes и events перечислены в
-  `ov-cloud/README.md`.
+  `https://<saas-host>/api/slack/callback` (app); scopes and events are listed in
+  `ov-cloud/README.md`. A dev Slack app can be created from the
+  `ov-cloud/slack-app-manifest.yaml` manifest (replace `request_url` with your tunnel).
 
-## Известные MVP-ограничения (из ov-cloud/README.md)
+## Known MVP limitations (from ov-cloud/README.md)
 
-Состояние задач — in-memory `TaskRouter` (production: Postgres + Redis); маршрутизация —
-первый runner воркспейса; стриминг в Slack — edit 1×/сек (production: `chat.startStream`);
-один сервер OpenViking с account-изоляцией.
+Task state is in-memory (`TaskRouter`) (production: Postgres + Redis); routing picks
+the first runner in a workspace; Slack streaming is 1 edit/sec (production:
+`chat.startStream`); a single OpenViking server with account isolation.
