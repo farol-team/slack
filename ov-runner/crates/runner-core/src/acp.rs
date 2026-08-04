@@ -27,12 +27,15 @@ pub enum AcpEvent {
     PermissionRequest {
         request_id: u64,
         description: String,
+        /// optionId из предложенных агентом options: куда маппятся approve/deny.
+        allow_id: String,
+        reject_id: String,
     },
 }
 
 pub struct AcpClient {
-    child: Child,
-    stdin: ChildStdin,
+    child: Arc<Mutex<Child>>,
+    stdin: Arc<Mutex<ChildStdin>>,
     next_id: AtomicU64,
     pending: Arc<Mutex<HashMap<u64, oneshot::Sender<Result<Value, String>>>>>,
 }
@@ -99,8 +102,8 @@ impl AcpClient {
         });
 
         Ok(Self {
-            child,
-            stdin,
+            child: Arc::new(Mutex::new(child)),
+            stdin: Arc::new(Mutex::new(stdin)),
             next_id: AtomicU64::new(1),
             pending,
         })
@@ -120,10 +123,28 @@ impl AcpClient {
                 .and_then(Value::as_str)
                 .unwrap_or("action")
                 .to_string();
+            // optionId — произвольные строки агента (у kimi: approve_once/reject),
+            // kind'ы вида allow_once/reject_once — НЕ валидные optionId.
+            let options = params.get("options").and_then(Value::as_array);
+            let pick = |prefix: &str, fallback: &str| -> String {
+                options
+                    .and_then(|opts| {
+                        opts.iter().find(|o| {
+                            o.get("kind").and_then(Value::as_str)
+                                .is_some_and(|k| k.starts_with(prefix))
+                        })
+                    })
+                    .and_then(|o| o.get("optionId"))
+                    .and_then(Value::as_str)
+                    .unwrap_or(fallback)
+                    .to_string()
+            };
             let _ = events
                 .send(AcpEvent::PermissionRequest {
                     request_id: id,
                     description,
+                    allow_id: pick("allow", "approve_once"),
+                    reject_id: pick("reject", "reject"),
                 })
                 .await;
         }
@@ -132,7 +153,7 @@ impl AcpClient {
         // to its own cwd by default.
     }
 
-    async fn call(&mut self, method: &str, params: Value) -> Result<Value> {
+    async fn call(&self, method: &str, params: Value) -> Result<Value> {
         let id = self.next_id.fetch_add(1, Ordering::SeqCst);
         let (tx, rx) = oneshot::channel();
         self.pending.lock().await.insert(id, tx);
@@ -141,15 +162,20 @@ impl AcpClient {
         let mut line = serde_json::to_string(&req)?;
         line.push('\n');
         debug!("acp -> {}", line.trim());
-        self.stdin.write_all(line.as_bytes()).await?;
-        self.stdin.flush().await?;
+        {
+            // Мьютекс только на запись: пока ждём ответ (rx.await), другие
+            // вызовы (respond_permission, cancel) должны иметь доступ к stdin.
+            let mut stdin = self.stdin.lock().await;
+            stdin.write_all(line.as_bytes()).await?;
+            stdin.flush().await?;
+        }
 
         rx.await
             .context("agent dropped the connection")?
             .map_err(|e| anyhow!("{method} failed: {e}"))
     }
 
-    pub async fn initialize(&mut self) -> Result<()> {
+    pub async fn initialize(&self) -> Result<()> {
         self.call(
             "initialize",
             json!({
@@ -162,7 +188,7 @@ impl AcpClient {
         Ok(())
     }
 
-    pub async fn new_session(&mut self, cwd: &str, mcp_servers: Value) -> Result<String> {
+    pub async fn new_session(&self, cwd: &str, mcp_servers: Value) -> Result<String> {
         let res = self
             .call(
                 "session/new",
@@ -175,7 +201,7 @@ impl AcpClient {
             .ok_or_else(|| anyhow!("no sessionId in response"))
     }
 
-    pub async fn load_session(&mut self, session_id: &str, cwd: &str, mcp_servers: Value) -> Result<()> {
+    pub async fn load_session(&self, session_id: &str, cwd: &str, mcp_servers: Value) -> Result<()> {
         self.call(
             "session/load",
             json!({ "sessionId": session_id, "cwd": cwd, "mcpServers": mcp_servers }),
@@ -184,7 +210,7 @@ impl AcpClient {
         Ok(())
     }
 
-    pub async fn prompt(&mut self, session_id: &str, text: &str) -> Result<()> {
+    pub async fn prompt(&self, session_id: &str, text: &str) -> Result<()> {
         self.call(
             "session/prompt",
             json!({
@@ -196,7 +222,7 @@ impl AcpClient {
         Ok(())
     }
 
-    pub async fn cancel(&mut self, session_id: &str) -> Result<()> {
+    pub async fn cancel(&self, session_id: &str) -> Result<()> {
         let notif = json!({
             "jsonrpc": "2.0",
             "method": "session/cancel",
@@ -204,28 +230,31 @@ impl AcpClient {
         });
         let mut line = serde_json::to_string(&notif)?;
         line.push('\n');
-        self.stdin.write_all(line.as_bytes()).await?;
+        let mut stdin = self.stdin.lock().await;
+        stdin.write_all(line.as_bytes()).await?;
+        stdin.flush().await?;
         Ok(())
     }
 
     /// Answer a pending session/request_permission from the agent.
-    pub async fn respond_permission(&mut self, request_id: u64, approved: bool) -> Result<()> {
-        let option = if approved { "allow_once" } else { "reject_once" };
+    /// `option_id` — один из optionId, предложенных агентом в options.
+    pub async fn respond_permission(&self, request_id: u64, option_id: &str) -> Result<()> {
         let response = json!({
             "jsonrpc": "2.0",
             "id": request_id,
-            "result": { "outcome": { "outcome": "selected", "optionId": option } }
+            "result": { "outcome": { "outcome": "selected", "optionId": option_id } }
         });
         let mut line = serde_json::to_string(&response)?;
         line.push('\n');
-        self.stdin.write_all(line.as_bytes()).await?;
-        self.stdin.flush().await?;
+        let mut stdin = self.stdin.lock().await;
+        stdin.write_all(line.as_bytes()).await?;
+        stdin.flush().await?;
         Ok(())
     }
 
     /// Kill the agent process.
-    pub async fn shutdown(&mut self) {
-        let _ = self.child.kill().await;
+    pub async fn shutdown(&self) {
+        let _ = self.child.lock().await.kill().await;
     }
 }
 

@@ -53,18 +53,25 @@ where
                         let _ = write.send(Message::Text(h)).await;
                     }
 
+                    // Keepalive: без него тихий обрыв TCP (NAT/docker-proxy)
+                    // не виден на read.next() — runner висит offline навсегда.
+                    let mut ping_tick = tokio::time::interval(Duration::from_secs(25));
+                    let mut last_seen = std::time::Instant::now();
+
                     loop {
                         tokio::select! {
                             // cloud -> runner
                             frame = read.next() => {
                                 match frame {
                                     Some(Ok(Message::Text(text))) => {
+                                        last_seen = std::time::Instant::now();
                                         match serde_json::from_str::<CloudMessage>(&text) {
                                             Ok(msg) => on_message(msg).await,
                                             Err(e) => warn!("bad cloud frame: {e}"),
                                         }
                                     }
                                     Some(Ok(Message::Ping(p))) => {
+                                        last_seen = std::time::Instant::now();
                                         let _ = write.send(Message::Pong(p)).await;
                                     }
                                     Some(Err(e)) => { warn!("ws error: {e}"); break; }
@@ -79,6 +86,16 @@ where
                                         if write.send(Message::Text(text)).await.is_err() { break; }
                                     }
                                     None => return, // sender dropped, shut down
+                                }
+                            }
+                            // heartbeat: ping каждые 25с, реконнект если тишина > 75с
+                            _ = ping_tick.tick() => {
+                                if last_seen.elapsed() > Duration::from_secs(75) {
+                                    warn!("keepalive timeout, reconnecting...");
+                                    break;
+                                }
+                                if let Ok(ping) = serde_json::to_string(&CloudMessage::Ping) {
+                                    if write.send(Message::Text(ping)).await.is_err() { break; }
                                 }
                             }
                         }

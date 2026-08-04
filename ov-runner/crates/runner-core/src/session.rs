@@ -16,10 +16,10 @@ use tracing::{error, info};
 use uuid::Uuid;
 
 struct RunningTask {
-    client: Arc<Mutex<AcpClient>>,
+    client: Arc<AcpClient>,
     session_id: Option<String>,
-    /// Pending permission: ACP JSON-RPC request id.
-    pending_permissions: HashMap<String, u64>,
+    /// Pending permission: ACP JSON-RPC request id + optionId для approve/deny.
+    pending_permissions: HashMap<String, (u64, String, String)>,
 }
 
 pub struct SessionManager {
@@ -64,7 +64,7 @@ impl SessionManager {
         // OpenViking pick it up via MCP server config in session/new.
         let env: Vec<(String, String)> = vec![];
 
-        let mut client = match AcpClient::spawn(&agent.command, &agent.args, &cwd, &env, ev_tx).await {
+        let client = match AcpClient::spawn(&agent.command, &agent.args, &cwd, &env, ev_tx).await {
             Ok(c) => c,
             Err(e) => {
                 self.finish(task.task_id, TaskStatus::Failed, None, Some(format!("spawn: {e}")));
@@ -96,7 +96,7 @@ impl SessionManager {
             None => client.new_session(&task.cwd, mcp_servers).await.ok(),
         };
 
-        let client = Arc::new(Mutex::new(client));
+        let client = Arc::new(client);
         let running = Arc::new(Mutex::new(RunningTask {
             client: client.clone(),
             session_id: session_id.clone(),
@@ -114,10 +114,10 @@ impl SessionManager {
                     AcpEvent::ToolCall { title } => (TaskEventKind::ToolCall, title, None),
                     AcpEvent::ToolCallUpdate { title } => (TaskEventKind::ToolCallUpdate, title, None),
                     AcpEvent::Plan(t) => (TaskEventKind::Plan, t, None),
-                    AcpEvent::PermissionRequest { request_id, description } => {
+                    AcpEvent::PermissionRequest { request_id, description, allow_id, reject_id } => {
                         let pid = request_id.to_string();
                         running.lock().await
-                            .pending_permissions.insert(pid.clone(), request_id);
+                            .pending_permissions.insert(pid.clone(), (request_id, allow_id, reject_id));
                         (TaskEventKind::PermissionRequest, description, Some(pid))
                     }
                 };
@@ -129,7 +129,10 @@ impl SessionManager {
 
         info!("task {} started, session {:?}", task.task_id, session_id);
         let sid = session_id.clone().unwrap_or_default();
-        let result = client.lock().await.prompt(&sid, &task.prompt).await;
+        // prompt ждёт финальный ответ агента — потенциально минуты.
+        // Мьютекса на клиенте нет: respond_permission/cancel пишут в stdin
+        // параллельно через свой мьютекс внутри AcpClient.
+        let result = client.prompt(&sid, &task.prompt).await;
         match result {
             Ok(()) => self.finish(task.task_id, TaskStatus::Done, session_id, None),
             Err(e) => self.finish(task.task_id, TaskStatus::Failed, session_id, Some(e.to_string())),
@@ -141,8 +144,9 @@ impl SessionManager {
         let tasks = self.tasks.lock().await;
         if let Some(task) = tasks.get(&task_id) {
             let mut t = task.lock().await;
-            if let Some(request_id) = t.pending_permissions.remove(&permission_id) {
-                let _ = t.client.lock().await.respond_permission(request_id, approved).await;
+            if let Some((request_id, allow_id, reject_id)) = t.pending_permissions.remove(&permission_id) {
+                let option_id = if approved { allow_id } else { reject_id };
+                let _ = t.client.respond_permission(request_id, &option_id).await;
             }
         }
     }
@@ -153,7 +157,7 @@ impl SessionManager {
         if let Some(task) = tasks.get(&task_id) {
             let t = task.lock().await;
             if let Some(sid) = &t.session_id {
-                let _ = t.client.lock().await.cancel(sid).await;
+                let _ = t.client.cancel(sid).await;
             }
         }
         self.finish(task_id, TaskStatus::Cancelled, None, None);
@@ -168,7 +172,7 @@ impl SessionManager {
     /// Graceful shutdown: kill all agent processes.
     pub async fn shutdown(&self) {
         for (_, task) in self.tasks.lock().await.drain() {
-            task.lock().await.client.lock().await.shutdown().await;
+            task.lock().await.client.shutdown().await;
         }
     }
 }
