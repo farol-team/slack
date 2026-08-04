@@ -1,0 +1,12 @@
+# Rust build artifacts (весь кэш компиляции, включая debug/build)
+/target/
+
+# Node (desktop-приложение)
+node_modules/
+
+# Tauri codegen (генерируется при сборке)
+apps/desktop/src-tauri/gen/
+
+# Локальные логи/мусор
+*.log
+.DS_Store
