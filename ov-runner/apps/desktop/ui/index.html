@@ -35,6 +35,7 @@
     <div style="font-size:13px">Paste the runner token from your dashboard:</div>
     <input id="token" placeholder="ovr_…" type="password">
     <button onclick="doLogin()">Connect workspace</button>
+    <div id="login-error" style="color:#ff3b30;font-size:12px;white-space:pre-wrap"></div>
   </div>
 
   <div class="card">
@@ -58,11 +59,20 @@
     document.getElementById('logout-btn').style.display = s.logged_in ? 'block' : 'none';
   }
 
+  function showError(e) {
+    document.getElementById('login-card').style.display = 'block';
+    document.getElementById('login-error').textContent = String(e && e.message || e);
+  }
+  window.onerror = (m, s, l, c, err) => showError(err || m);
+  window.onunhandledrejection = ev => showError(ev.reason);
+
   async function doLogin() {
     const token = document.getElementById('token').value.trim();
-    if (!token) return;
-    await invoke('login', { token });
-    refresh();
+    if (!token) { showError('token is empty'); return; }
+    try {
+      await invoke('login', { token });
+      refresh();
+    } catch (e) { showError(e); }
   }
 
   async function doLogout() { await invoke('logout'); refresh(); }

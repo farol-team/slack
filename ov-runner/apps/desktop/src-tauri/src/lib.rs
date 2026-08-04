@@ -41,14 +41,23 @@ impl Default for RunnerStatus {
 
 #[tauri::command]
 async fn get_status(state: State<'_, AppState>) -> Result<RunnerStatus, String> {
-    Ok(state.status.read().await.clone())
+    let s = state.status.read().await.clone();
+    tracing::info!("IPC get_status: logged_in={} connected={}", s.logged_in, s.connected);
+    Ok(s)
 }
 
 /// Login flow: user pastes the token from the web dashboard.
 /// Production upgrade: OAuth device-flow opening the browser.
 #[tauri::command]
 async fn login(app: AppHandle, token: String) -> Result<(), String> {
-    RunnerConfig::set_token(&token).map_err(|e| e.to_string())?;
+    tracing::info!("IPC login: token_len={}", token.len());
+    match RunnerConfig::set_token(&token) {
+        Ok(()) => tracing::info!("IPC login: keychain write OK"),
+        Err(e) => {
+            tracing::error!("IPC login: keychain write FAILED: {e}");
+            return Err(e.to_string());
+        }
+    }
     // (Re)start the cloud connection with the new token.
     start_cloud(app).await;
     Ok(())
@@ -75,10 +84,26 @@ async fn add_allowed_cwd(path: String) -> Result<(), String> {
 // ---------- Cloud wiring ----------
 
 async fn start_cloud(app: AppHandle) {
-    let cfg = RunnerConfig::load().unwrap_or_default();
-    let Some(token) = RunnerConfig::token().ok().flatten() else {
-        return; // not logged in yet
+    let cfg = match RunnerConfig::load() {
+        Ok(c) => c,
+        Err(e) => {
+            tracing::error!("start_cloud: config load failed: {e}");
+            RunnerConfig::default()
+        }
     };
+    tracing::info!("start_cloud: cloud_url={}", cfg.cloud_url);
+    // Workaround: keyring 3.6 на macOS теряет запись сразу после write —
+    // в dev можно задать токен через OV_RUNNER_TOKEN.
+    let token = match std::env::var("OV_RUNNER_TOKEN").ok()
+        .or_else(|| RunnerConfig::token().ok().flatten())
+    {
+        Some(t) => t,
+        None => {
+            tracing::error!("start_cloud: токен не найден (env и keychain пусты) — ранний выход");
+            return;
+        }
+    };
+    tracing::info!("start_cloud: token прочитан, len={}", token.len());
 
     let hello = CloudMessage::Hello(Hello {
         token,
