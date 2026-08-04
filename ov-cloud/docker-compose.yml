@@ -2,9 +2,9 @@ version: "3.9"
 
 services:
   openviking:
-    image: volcengine/openviking:latest
+    image: openviking/openviking:latest
     ports:
-      - "1933:1933"
+      - "1934:1933"   # на хосте 1933 занят workroom-openviking-1; внутри сети compose сервис всё равно openviking:1933
     volumes:
       - ov-data:/root/.openviking
     environment:

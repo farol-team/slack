@@ -15,3 +15,6 @@ futures-util = "0.3"
 uuid = { version = "1", features = ["v4", "serde"] }
 directories = "5"
 keyring = "3"
+
+[dev-dependencies]
+tracing-subscriber.workspace = true
