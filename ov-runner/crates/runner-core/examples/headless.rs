@@ -1,7 +1,7 @@
-//! Headless-запуск runner'а без Tauri-UI: для dev-отладки и тестов.
+//! Headless runner without the Tauri UI: for dev debugging and tests.
 //!
-//! Конфиг — стандартный `RunnerConfig::load()` (config.json в platform config dir),
-//! токен — из env `OV_RUNNER_TOKEN` (иначе из OS keychain).
+//! Config is the standard `RunnerConfig::load()` (config.json in the platform config dir),
+//! the token comes from the `OV_RUNNER_TOKEN` env var (falling back to the OS keychain).
 //!
 //! ```bash
 //! OV_RUNNER_TOKEN=ovr_... cargo run -p runner-core --example headless
@@ -22,7 +22,7 @@ async fn main() -> anyhow::Result<()> {
     let token = std::env::var("OV_RUNNER_TOKEN")
         .ok()
         .or_else(|| RunnerConfig::token().ok().flatten())
-        .expect("токен не найден: задайте OV_RUNNER_TOKEN или запись в keychain");
+        .expect("token not found: set OV_RUNNER_TOKEN or add a keychain entry");
 
     let hello = CloudMessage::Hello(Hello {
         token,
@@ -36,8 +36,8 @@ async fn main() -> anyhow::Result<()> {
           cfg.agents.iter().map(|a| &a.name).collect::<Vec<_>>(),
           cfg.allowed_cwds);
 
-    // SessionManager нужен обработчику сообщений, но зависит от CloudSender,
-    // который появится только после run_connection_loop — разрываем цикл слотом.
+    // The message handler needs the SessionManager, but it depends on the CloudSender,
+    // which only exists after run_connection_loop — break the cycle with a slot.
     let sm_slot = Arc::new(Mutex::new(None::<Arc<SessionManager>>));
     let slot = sm_slot.clone();
     let cloud: CloudSender = run_connection_loop(cfg.cloud_url.clone(), hello, move |msg| {
@@ -65,7 +65,7 @@ async fn main() -> anyhow::Result<()> {
     .await;
 
     *sm_slot.lock().await = Some(Arc::new(SessionManager::new(cfg, cloud)));
-    info!("session manager ready, жду задачи из облака");
+    info!("session manager ready, waiting for tasks from the cloud");
 
     tokio::signal::ctrl_c().await?;
     Ok(())

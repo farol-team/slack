@@ -1,7 +1,7 @@
-# Slack App Manifest для OV Cloud (dev).
-# Импорт: https://api.slack.com/apps → Create New App → From a manifest → вставить этот YAML.
-# ВАЖНО: после поднятия туннеля (шаг 3) заменить request_url на
-#   https://<ваш-ngrok-host>/slack/events
+# Slack App Manifest for OV Cloud (dev).
+# Import: https://api.slack.com/apps → Create New App → From a manifest → paste this YAML.
+# IMPORTANT: once the tunnel is up (step 3), replace request_url with
+#   https://<your-ngrok-host>/slack/events
 display_information:
   name: ov-dev-bot
   description: Slack Memory / Agent Bridge (dev)
