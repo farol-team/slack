@@ -1,0 +1,32 @@
+version: "3.9"
+
+services:
+  openviking:
+    image: volcengine/openviking:latest
+    ports:
+      - "1933:1933"
+    volumes:
+      - ov-data:/root/.openviking
+    environment:
+      # VLM + embeddings are mandatory for L0/L1 processing.
+      # Configure via `openviking-server init` or mount an ov.conf.
+      OPENVIKING_CONFIG: /root/.openviking/ov.conf
+
+  cloud:
+    build: .
+    ports:
+      - "8000:8000"
+    environment:
+      SLACK_BOT_TOKEN: ${SLACK_BOT_TOKEN:-}
+      SLACK_SIGNING_SECRET: ${SLACK_SIGNING_SECRET}
+      OV_SAAS_URL: ${OV_SAAS_URL:-}
+      INTERNAL_API_SECRET: ${INTERNAL_API_SECRET:-}
+      OPENVIKING_URL: http://openviking:1933
+      OPENVIKING_ROOT_KEY: ${OPENVIKING_ROOT_KEY}
+      MEMORY_MCP_URL: ${MEMORY_MCP_URL:-}     # public MCP endpoint for agents
+      DEFAULT_CWD: ${DEFAULT_CWD:-/home/user/projects}
+    depends_on:
+      - openviking
+
+volumes:
+  ov-data:

@@ -1,0 +1,174 @@
+//! SessionManager: executes cloud-assigned tasks on local ACP agents.
+//! One task = one ACP session bound to a Slack thread.
+
+use crate::acp::{AcpClient, AcpEvent};
+use crate::cloud::CloudSender;
+use crate::config::RunnerConfig;
+use crate::protocol::{
+    AssignTask, CloudMessage, TaskEvent, TaskEventKind, TaskResult, TaskStatus,
+};
+use serde_json::json;
+use std::collections::HashMap;
+use std::path::PathBuf;
+use std::sync::Arc;
+use tokio::sync::{mpsc, Mutex};
+use tracing::{error, info};
+use uuid::Uuid;
+
+struct RunningTask {
+    client: Arc<Mutex<AcpClient>>,
+    session_id: Option<String>,
+    /// Pending permission: ACP JSON-RPC request id.
+    pending_permissions: HashMap<String, u64>,
+}
+
+pub struct SessionManager {
+    config: RunnerConfig,
+    cloud: CloudSender,
+    tasks: Arc<Mutex<HashMap<Uuid, Arc<Mutex<RunningTask>>>>>,
+}
+
+impl SessionManager {
+    pub fn new(config: RunnerConfig, cloud: CloudSender) -> Self {
+        Self {
+            config,
+            cloud,
+            tasks: Arc::new(Mutex::new(HashMap::new())),
+        }
+    }
+
+    /// Entry point for CloudMessage::AssignTask.
+    pub async fn handle_assign(&self, task: AssignTask) {
+        // Security gate: never run outside allowlisted directories.
+        let cwd = PathBuf::from(&task.cwd);
+        if !self.config.is_cwd_allowed(&cwd) {
+            error!("rejected cwd outside allowlist: {cwd:?}");
+            self.finish(task.task_id, TaskStatus::Failed, None,
+                        Some("cwd not allowed by local policy".into()));
+            return;
+        }
+
+        let agent = match self.config.agents.iter().find(|a| a.name == task.agent)
+            .or_else(|| self.config.agents.first())
+        {
+            Some(a) => a.clone(),
+            None => {
+                self.finish(task.task_id, TaskStatus::Failed, None, Some("no agents configured".into()));
+                return;
+            }
+        };
+
+        let (ev_tx, mut ev_rx) = mpsc::channel::<AcpEvent>(64);
+
+        // Env injection for the memory layer: agents that support
+        // OpenViking pick it up via MCP server config in session/new.
+        let env: Vec<(String, String)> = vec![];
+
+        let mut client = match AcpClient::spawn(&agent.command, &agent.args, &cwd, &env, ev_tx).await {
+            Ok(c) => c,
+            Err(e) => {
+                self.finish(task.task_id, TaskStatus::Failed, None, Some(format!("spawn: {e}")));
+                return;
+            }
+        };
+
+        if let Err(e) = client.initialize().await {
+            self.finish(task.task_id, TaskStatus::Failed, None, Some(format!("initialize: {e}")));
+            return;
+        }
+
+        // MCP servers for the agent: team memory endpoint.
+        let mcp_servers = match &task.memory {
+            Some(mem) => json!([{
+                "name": "team-memory",
+                "type": "http",
+                "url": mem.mcp_url,
+                "headers": { "Authorization": format!("Bearer {}", mem.user_key) }
+            }]),
+            None => json!([]),
+        };
+
+        let session_id = match &task.resume_session {
+            Some(sid) => {
+                client.load_session(sid, &task.cwd, mcp_servers).await.ok();
+                Some(sid.clone())
+            }
+            None => client.new_session(&task.cwd, mcp_servers).await.ok(),
+        };
+
+        let client = Arc::new(Mutex::new(client));
+        let running = Arc::new(Mutex::new(RunningTask {
+            client: client.clone(),
+            session_id: session_id.clone(),
+            pending_permissions: HashMap::new(),
+        }));
+        self.tasks.lock().await.insert(task.task_id, running.clone());
+
+        // Forward ACP events to the cloud (cloud renders them into Slack).
+        let cloud = self.cloud.clone();
+        let task_id = task.task_id;
+        tokio::spawn(async move {
+            while let Some(ev) = ev_rx.recv().await {
+                let (kind, text, permission_id) = match ev {
+                    AcpEvent::MessageChunk(t) => (TaskEventKind::AgentMessageChunk, t, None),
+                    AcpEvent::ToolCall { title } => (TaskEventKind::ToolCall, title, None),
+                    AcpEvent::ToolCallUpdate { title } => (TaskEventKind::ToolCallUpdate, title, None),
+                    AcpEvent::Plan(t) => (TaskEventKind::Plan, t, None),
+                    AcpEvent::PermissionRequest { request_id, description } => {
+                        let pid = request_id.to_string();
+                        running.lock().await
+                            .pending_permissions.insert(pid.clone(), request_id);
+                        (TaskEventKind::PermissionRequest, description, Some(pid))
+                    }
+                };
+                cloud.send(&CloudMessage::TaskEvent(TaskEvent {
+                    task_id, kind, text, permission_id,
+                }));
+            }
+        });
+
+        info!("task {} started, session {:?}", task.task_id, session_id);
+        let sid = session_id.clone().unwrap_or_default();
+        let result = client.lock().await.prompt(&sid, &task.prompt).await;
+        match result {
+            Ok(()) => self.finish(task.task_id, TaskStatus::Done, session_id, None),
+            Err(e) => self.finish(task.task_id, TaskStatus::Failed, session_id, Some(e.to_string())),
+        }
+    }
+
+    /// Slack pressed Approve/Deny — relay into the agent.
+    pub async fn handle_permission(&self, task_id: Uuid, permission_id: String, approved: bool) {
+        let tasks = self.tasks.lock().await;
+        if let Some(task) = tasks.get(&task_id) {
+            let mut t = task.lock().await;
+            if let Some(request_id) = t.pending_permissions.remove(&permission_id) {
+                let _ = t.client.lock().await.respond_permission(request_id, approved).await;
+            }
+        }
+    }
+
+    /// Slack pressed Stop.
+    pub async fn handle_cancel(&self, task_id: Uuid) {
+        let tasks = self.tasks.lock().await;
+        if let Some(task) = tasks.get(&task_id) {
+            let t = task.lock().await;
+            if let Some(sid) = &t.session_id {
+                let _ = t.client.lock().await.cancel(sid).await;
+            }
+        }
+        self.finish(task_id, TaskStatus::Cancelled, None, None);
+    }
+
+    fn finish(&self, task_id: Uuid, status: TaskStatus, session_id: Option<String>, error: Option<String>) {
+        self.cloud.send(&CloudMessage::TaskResult(TaskResult {
+            task_id, status, session_id, error,
+        }));
+    }
+
+    /// Graceful shutdown: kill all agent processes.
+    pub async fn shutdown(&self) {
+        for (_, task) in self.tasks.lock().await.drain() {
+            task.lock().await.client.lock().await.shutdown().await;
+        }
+    }
+}
