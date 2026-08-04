@@ -1,4 +1,4 @@
-# Секреты — только локально
+# Secrets — local only
 .env
 
 # Python
@@ -6,6 +6,6 @@ __pycache__/
 *.pyc
 .venv/
 
-# Локальные логи/мусор
+# Local logs/junk
 *.log
 .DS_Store
