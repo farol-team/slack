@@ -1,78 +1,80 @@
-# OV Cloud — облачная сторона (Task Router + Slack + OpenViking)
+# OV Cloud — cloud side (Task Router + Slack + OpenViking)
 
-Серверная часть сервиса «Slack Memory / Agent Bridge». Парный проект к
-[`ov-runner`](../ov-runner) — тонкому клиенту на Rust + Tauri.
-Протокол обмена — зеркало `ov-runner/crates/runner-core/src/protocol.rs`.
+Server side of the "Slack Memory / Agent Bridge" service. Companion project to
+[`ov-runner`](../ov-runner) — the thin Rust + Tauri client.
+The exchange protocol mirrors `ov-runner/crates/runner-core/src/protocol.rs`.
 
-## Компоненты
+## Components
 
 ```
 app/
-├── protocol.py      # pydantic-модели, 1-в-1 с Rust serde (tagged union, snake_case)
-├── task_router.py   # реестр runner'ов, жизненный цикл задач, thread ↔ task ↔ session
-├── slack_app.py     # Slack Bolt: mentions, кнопки Approve/Deny/Stop, ingestion-буфер
-├── memory.py        # HTTP-клиент OpenViking (accounts/users, resources, sessions)
+├── protocol.py      # pydantic models, 1-to-1 with the Rust serde (tagged union, snake_case)
+├── task_router.py   # runner registry, task lifecycle, thread ↔ task ↔ session
+├── slack_app.py     # Slack Bolt: mentions, Approve/Deny/Stop buttons, ingestion buffer
+├── memory.py        # OpenViking HTTP client (accounts/users, resources, sessions)
 └── main.py          # FastAPI: /runner/v1 (WS), /slack/events, /healthz
 ```
 
-## Потоки данных
+## Data flows
 
-**Задача из Slack → локальный агент:**
+**Task from Slack → local agent:**
 ```
-@app_mention в треде
+@app_mention in a thread
   → TaskRouter.assign() → AssignTask (WS) → runner
-  → runner спавнит `agent --acp` (cwd проверен по allowlist на клиенте)
-  → TaskEvent'ы стримятся обратно:
-      agent_message_chunk → chat_update одного сообщения (≤1 edit/сек, rate-limit safe)
-      tool_call / plan    → статусные реплаи в тред
-      permission_request  → Block Kit кнопки Approve / Deny / Stop
-  → кнопки → PermissionDecision / CancelTask (WS) → runner → агент
-  → TaskResult → финальный статус + кнопка Resume (session_id хранится)
+  → runner spawns `agent --acp` (cwd checked against the allowlist on the client)
+  → TaskEvents stream back:
+      agent_message_chunk → chat_update of a single message (≤1 edit/sec, rate-limit safe)
+      tool_call / plan    → status replies in the thread
+      permission_request  → Block Kit Approve / Deny / Stop buttons
+  → buttons → PermissionDecision / CancelTask (WS) → runner → agent
+  → TaskResult → final status + Resume button (session_id is stored)
 ```
 
-**Память (модель C):**
-- Все сообщения каналов → `IngestionBuffer` (батчи 50 шт / 5 мин) →
-  `OpenViking /{workspace}/resources/slack/{channel}/{date}.md`, L0/L1 генерируются автоматически.
-- Runner при подключении передаёт `user_key` OpenViking — облако прокидывает его агенту
-  в `AssignTask.memory` как MCP endpoint → агент читает память команды.
-- Multi-tenancy нативная: workspace = OpenViking account, ACL делает сам OpenViking.
+**Memory (model C):**
+- All channel messages → `IngestionBuffer` (batches of 50 msgs / 5 min) →
+  `OpenViking /{workspace}/resources/slack/{channel}/{date}.md`; L0/L1 are generated automatically.
+- On connect, the runner passes its OpenViking `user_key` — the cloud forwards it to
+  the agent in `AssignTask.memory` as an MCP endpoint → the agent reads the team's memory.
+- Multi-tenancy is native: workspace = OpenViking account, ACL is handled by OpenViking itself.
 
-## Запуск
+## Running
 
 ```bash
-cp .env.example .env   # см. переменные ниже
+cp .env.example .env   # see variables below
 docker compose up --build
 ```
 
-## Slack-интеграция (мультитенантная)
+## Slack integration (multi-tenant)
 
-Flow «Add to Slack» живёт в SaaS-панели (`ov-saas/app`):
-пользователь жмёт кнопку → OAuth v2 → callback сохраняет bot token в
-`slack_installations` и синкает каналы. Этот сервис **не хранит токены** —
-на каждый Slack event резолвит bot token по `team_id` через
-`slack.installationByTeam` (tRPC, защищён заголовком `x-internal-secret`).
+The "Add to Slack" flow lives in the SaaS panel (`ov-saas/app`):
+the user clicks the button → OAuth v2 → the callback stores the bot token in
+`slack_installations` and syncs the channels. This service **does not store tokens** —
+on every Slack event it resolves the bot token by `team_id` via
+`slack.installationByTeam` (tRPC, protected by the `x-internal-secret` header).
 
-Переменные:
-- `OV_SAAS_URL` + `INTERNAL_API_SECRET` — связка с SaaS (мультитенантный режим);
-- `SLACK_BOT_TOKEN` — fallback для dev с одним воркспейсом.
+Variables:
+- `OV_SAAS_URL` + `INTERNAL_API_SECRET` — link to the SaaS (multi-tenant mode);
+- `SLACK_BOT_TOKEN` — fallback for single-workspace dev.
 
 Slack app: scopes `app_mentions:read, channels:read, channels:history,
 chat:write, groups:read, groups:history`, Events: `app_mention`,
 `message.channels`, Request URL → `https://<host>/slack/events`,
 Redirect URL → `https://<saas-host>/api/slack/callback`.
+A dev Slack app can be created from the [`slack-app-manifest.yaml`](slack-app-manifest.yaml)
+manifest (replace `request_url` with your tunnel).
 
-## Решения и допущения MVP
+## MVP decisions and assumptions
 
-| Что | Сейчас | Production |
+| What | Now | Production |
 |---|---|---|
-| Auth runner'а | токен `ovr_{workspace}_{userkey}` | БД + OAuth, ротация ключей |
-| Состояние задач | in-memory (`TaskRouter`) | Postgres + Redis streams |
-| Маршрутизация | первый runner воркспейса | маппинг Slack user → runner |
-| Стриминг в Slack | edit 1×/сек | `chat.startStream` API |
-| OpenViking | один сервер, account-изоляция | per-enterprise инстансы |
+| Runner auth | `ovr_{workspace}_{userkey}` token | DB + OAuth, key rotation |
+| Task state | in-memory (`TaskRouter`) | Postgres + Redis streams |
+| Routing | first runner in the workspace | Slack user → runner mapping |
+| Slack streaming | edit 1×/sec | `chat.startStream` API |
+| OpenViking | single server, account isolation | per-enterprise instances |
 
-## Связь с runner'ом
+## Relationship with the runner
 
-Полный цикл: Slack упоминание → этот сервис → `wss` → ov-runner (Rust) →
-`claude --acp` локально → события обратно → рендер в тред. Контракт проверен
-round-trip сериализацией на обеих сторонах.
+Full cycle: Slack mention → this service → `wss` → ov-runner (Rust) →
+`claude --acp` locally → events back → rendered in the thread. The contract is
+verified by round-trip serialization on both sides.

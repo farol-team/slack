@@ -1,87 +1,98 @@
-# OV Runner — тонкий клиент (Rust + Tauri)
+# OV Runner — thin client (Rust + Tauri)
 
-Тонкий клиент сервиса **Slack Memory / Agent Bridge**: живёт в системном трее на машине
-разработчика, держит **исходящее** WebSocket-соединение с облаком и выполняет задачи
-из Slack на локальном coding-агенте через **ACP (Agent Client Protocol)**.
+Thin client of the **Slack Memory / Agent Bridge** service: lives in the system tray
+on a developer's machine, holds an **outbound** WebSocket connection to the cloud,
+and executes tasks from Slack on a local coding agent via **ACP (Agent Client Protocol)**.
 
-## Архитектура
+## Architecture
 
 ```
- Slack                       Cloud (SaaS)                  Этот клиент
+ Slack                       Cloud (SaaS)                  This client
 ┌────────┐  Events API   ┌──────────────┐   wss (outbound) ┌──────────────────────┐
-│ @бот   │──────────────►│ Task Router  │◄────────────────►│ OV Runner (Tauri)    │
-│ в треде│               │ + OpenViking │                  │  ├─ cloud.rs   WS+   │
-└───▲────┘                └──────┬───────┘                  │  │           reconnect│
-    │  chat.postMessage          │ AssignTask               │  ├─ acp.rs   JSON-RPC│
-    └────────────────────────────┘                          │  │           over stdio
-         (стрим чанков, кнопки Approve/Deny, Stop)          │  ├─ session.rs      │
-                                                            │  └─ config.rs +     │
-                                                            │     keychain        │
-                                                            └─────────┬───────────┘
-                                                                      │ spawn
-                                                            ┌─────────▼───────────┐
-                                                            │ claude --acp /      │
-                                                            │ gemini --acp (локал.)│
-                                                            └─────────────────────┘
+│ @bot   │──────────────►│ Task Router  │◄────────────────►│ OV Runner (Tauri)    │
+│ in     │               │ + OpenViking │                  │  ├─ cloud.rs   WS+   │
+│ thread │               └──────┬───────┘                  │  │           reconnect│
+└───▲────┘                      │ AssignTask               │  ├─ acp.rs   JSON-RPC│
+    │  chat.postMessage         │                          │  │           over stdio
+    └───────────────────────────┘                          │  ├─ session.rs      │
+         (chunk streaming, Approve/Deny buttons, Stop)     │  └─ config.rs +     │
+                                                           │     keychain        │
+                                                           └─────────┬───────────┘
+                                                                     │ spawn
+                                                           ┌─────────▼───────────┐
+                                                           │ claude --acp /      │
+                                                           │ gemini --acp (local)│
+                                                           └─────────────────────┘
 ```
 
-Принципы:
-- **Ноль открытых портов**: клиент всегда сам устанавливает соединение (`cloud.rs`).
-- **Агент как подпроцесс**: JSON-RPC 2.0 поверх stdio (`acp.rs`), без привязки к конкретному
-  агенту — работает любой ACP-совместимый (Claude Code, Gemini CLI, Codex, Kimi CLI…).
-- **Память из облака**: `AssignTask.memory` содержит MCP endpoint OpenViking; клиент
-  прокидывает его агенту при `session/new` — агент получает память команды.
-- **Безопасность**: `allowed_cwds` — жёсткий allowlist директорий; токен в OS keychain,
-  не в файле; destructive actions подтверждаются кнопками в Slack
+Principles:
+- **Zero open ports**: the client always initiates the connection itself (`cloud.rs`).
+- **Agent as a subprocess**: JSON-RPC 2.0 over stdio (`acp.rs`), not tied to any
+  specific agent — any ACP-compatible one works (Claude Code, Gemini CLI, Codex, Kimi CLI…).
+- **Memory from the cloud**: `AssignTask.memory` contains the OpenViking MCP endpoint;
+  the client passes it to the agent on `session/new` — the agent gets the team's memory.
+- **Security**: `allowed_cwds` is a hard allowlist of directories; the token lives in
+  the OS keychain, not in a file; destructive actions are confirmed via buttons in Slack
   (`session/request_permission` → Slack → `PermissionDecision`).
 
-## Структура
+## Structure
 
 ```
 ov-runner/
-├── crates/runner-core/        # проверено cargo check ✅
-│   └── src/
-│       ├── protocol.rs        # контракт сообщений cloud ↔ runner
-│       ├── acp.rs             # ACP-клиент (JSON-RPC stdio)
-│       ├── cloud.rs           # WebSocket loop с reconnect/backoff
-│       ├── session.rs         # SessionManager: задача → ACP-сессия
-│       └── config.rs          # конфиг + keychain (токен)
-└── apps/desktop/              # Tauri 2 приложение
-    ├── ui/index.html          # статус/логин (без сборщика, withGlobalTauri)
+├── crates/runner-core/        # verified with cargo check ✅
+│   ├── src/
+│   │   ├── protocol.rs        # cloud ↔ runner message contract
+│   │   ├── acp.rs             # ACP client (JSON-RPC stdio)
+│   │   ├── cloud.rs           # WebSocket loop with reconnect/backoff
+│   │   ├── session.rs         # SessionManager: task → ACP session
+│   │   └── config.rs          # config + keychain (token)
+│   └── examples/
+│       └── headless.rs        # headless runner without the Tauri UI (dev/E2E)
+└── apps/desktop/              # Tauri 2 application
+    ├── ui/index.html          # status/login (no bundler, withGlobalTauri)
     └── src-tauri/
-        ├── src/lib.rs         # tray, IPC-команды, автозапуск
+        ├── src/lib.rs         # tray, IPC commands, autostart
         ├── tauri.conf.json
         └── capabilities/default.json
 ```
 
-## Сборка и запуск
+## Build and run
 
-Требования: Rust stable, Node 18+, [системные зависимости Tauri](https://v2.tauri.app/start/prerequisites/).
+Requirements: Rust stable, Node 18+, [Tauri system dependencies](https://v2.tauri.app/start/prerequisites/).
 
 ```bash
 cd apps/desktop
 npm install
-npm run dev      # dev-режим с окном
-npm run build    # production-бандлы (.app/.msi/.deb)
+npm run dev      # dev mode with a window
+npm run build    # production bundles (.app/.msi/.deb)
 ```
 
-Ядро можно проверить отдельно: `cargo check` в корне workspace.
+The core can be checked on its own: `cargo check` in the workspace root.
 
-## Протокол (wss, JSON)
+Headless mode without the Tauri UI (for dev debugging and E2E tests):
 
-| Сообщение | Направление | Назначение |
+```bash
+OV_RUNNER_TOKEN=ovr_... cargo run -p runner-core --example headless
+```
+
+The token is taken from the `OV_RUNNER_TOKEN` env var (falls back to the OS keychain);
+config is the standard `RunnerConfig::load()`.
+
+## Protocol (wss, JSON)
+
+| Message | Direction | Purpose |
 |---|---|---|
-| `hello` | → | auth (token), версии, список агентов |
-| `assign_task` | ← | Slack-mention: prompt, thread, cwd, agent, memory-конфиг |
-| `task_event` | → | стрим: chunk / tool_call / plan / permission_request |
-| `permission_decision` | ← | Approve/Deny из Slack-кнопки |
+| `hello` | → | auth (token), versions, list of agents |
+| `assign_task` | ← | Slack mention: prompt, thread, cwd, agent, memory config |
+| `task_event` | → | stream: chunk / tool_call / plan / permission_request |
+| `permission_decision` | ← | Approve/Deny from a Slack button |
 | `cancel_task` | ← | Stop |
-| `task_result` | → | финальный статус + session_id (для resume) |
+| `task_result` | → | final status + session_id (for resume) |
 
-## Что дальше (production)
+## What's next (production)
 
-1. **Login через OAuth device-flow** вместо вставки токена.
-2. Автообновления (`tauri-plugin-updater`) + подпись бинарников.
-3. Детект установленных агентов (`which claude`, `which gemini`) при старте.
-4. Очередь задач и ограничение параллелизма (сейчас: одна задача — один процесс).
-5. Тесты: mock-агент по ACP + mock-cloud по протоколу.
+1. **Login via OAuth device flow** instead of pasting a token.
+2. Auto-updates (`tauri-plugin-updater`) + binary signing.
+3. Detect installed agents (`which claude`, `which gemini`) on startup.
+4. Task queue and concurrency limits (currently: one task — one process).
+5. Tests: a mock ACP agent + a mock cloud speaking the protocol.
