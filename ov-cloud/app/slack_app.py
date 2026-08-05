@@ -238,7 +238,17 @@ def register_handlers(app: AsyncApp, renderer: SlackRenderer,
         channel = event["channel"]
         thread_ts = event.get("thread_ts", event["ts"])
         prompt = event["text"]
-        workspace = context.get("team_id", "default")
+        team_id = context.get("team_id", "default")
+
+        # Runners register under the SaaS ovAccountId (runner.validate),
+        # not the Slack team id — resolve the installation to bridge the
+        # two id spaces before routing.
+        workspace = team_id
+        if resolve_installation:
+            try:
+                workspace = (await resolve_installation(team_id))["ov_account_id"]
+            except Exception:
+                log.exception("installation resolve failed for %s", team_id)
 
         runner = router.pick_runner(workspace)
         if runner is None:
@@ -246,10 +256,12 @@ def register_handlers(app: AsyncApp, renderer: SlackRenderer,
                            "and connect it to this workspace.", thread_ts=thread_ts)
             return
 
+        # slack_team must stay the Slack team id: the renderer resolves
+        # the bot token by team, not by OV account.
         await router.assign(runner=runner, channel=channel, thread_ts=thread_ts,
                             prompt=prompt, cwd=default_cwd,
                             mcp_url=memory_mcp_url,
-                            slack_team=workspace)
+                            slack_team=team_id)
 
     @app.event("message")
     async def on_message(event, context):
