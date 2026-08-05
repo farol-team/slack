@@ -135,7 +135,8 @@ Requirements: Rust stable, Node 18+, Tauri 2 system dependencies.
 
 - Secrets only via env: `app/.env.example`, `ov-cloud/.env.example` are templates;
   do not commit real `.env` files (covered by `.gitignore`).
-- Runner tokens (`ovr_{workspace}_{userkey}`): the DB stores only the SHA-256 hash
+- Runner tokens (random `ovr_*`, issued by `runner.createToken`, validated via
+  `runner.validate` — no offline/legacy format): the DB stores only the SHA-256 hash
   (`runners.tokenHash`); on the client the token lives in the OS keychain, not in a file.
 - Slack bot tokens are stored in `slack_installations` (note in code: encrypt via KMS
   in production). Internal SaaS ↔ ov-cloud calls are protected by the

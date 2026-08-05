@@ -55,29 +55,23 @@ class TaskRouter:
     # ---------- runner lifecycle ----------
 
     async def register(self, ws: WebSocket, hello: p.Hello) -> Optional[Runner]:
-        """Authenticate runner token against the SaaS control plane.
-        Calls `runner.validate` tRPC procedure; falls back to the legacy
-        `ovr_{workspace}_{userkey}` format when OV_SAAS_URL is unset (dev)."""
-        saas_url = os.getenv("OV_SAAS_URL", "").rstrip("/")
+        """Authenticate runner token against the SaaS control plane
+        (`runner.validate` tRPC procedure)."""
+        saas_url = os.environ["OV_SAAS_URL"].rstrip("/")
         workspace_id = user_key = None
 
-        if saas_url:
-            try:
-                async with httpx.AsyncClient(timeout=10) as client:
-                    res = await client.get(
-                        f"{saas_url}/api/trpc/runner.validate",
-                        params={"input": json.dumps({"json": {"token": hello.token}})},
-                    )
-                payload = res.json()
-                data = payload.get("result", {}).get("data", {}).get("json", {})
-                if data.get("valid"):
-                    workspace_id, user_key = data["workspaceId"], data["userKey"]
-            except Exception:
-                log.exception("SaaS token validation failed")
-        else:
-            parts = hello.token.split("_", 2)
-            if hello.token.startswith("ovr_") and len(parts) == 3:
-                _, workspace_id, user_key = parts
+        try:
+            async with httpx.AsyncClient(timeout=10) as client:
+                res = await client.get(
+                    f"{saas_url}/api/trpc/runner.validate",
+                    params={"input": json.dumps({"json": {"token": hello.token}})},
+                )
+            payload = res.json()
+            data = payload.get("result", {}).get("data", {}).get("json", {})
+            if data.get("valid"):
+                workspace_id, user_key = data["workspaceId"], data["userKey"]
+        except Exception:
+            log.exception("SaaS token validation failed")
 
         if not workspace_id:
             await ws.send_text(encode(p.Error(code="auth_failed",

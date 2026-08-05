@@ -53,8 +53,8 @@ on every Slack event it resolves the bot token by `team_id` via
 `slack.installationByTeam` (tRPC, protected by the `x-internal-secret` header).
 
 Variables:
-- `OV_SAAS_URL` + `INTERNAL_API_SECRET` — link to the SaaS (multi-tenant mode);
-- `SLACK_BOT_TOKEN` — fallback for single-workspace dev.
+- `OV_SAAS_URL` + `INTERNAL_API_SECRET` — link to the SaaS (required; there is
+  no single-workspace fallback).
 
 Slack app: scopes `app_mentions:read, channels:read, channels:history,
 chat:write, groups:read, groups:history`, Events: `app_mention`,
@@ -67,7 +67,7 @@ manifest (replace `request_url` with your tunnel).
 
 | What | Now | Production |
 |---|---|---|
-| Runner auth | `ovr_{workspace}_{userkey}` token | DB + OAuth, key rotation |
+| Runner auth | random `ovr_*` token, SHA-256 hash in SaaS DB | OAuth device flow, key rotation |
 | Task state | in-memory (`TaskRouter`) | Postgres + Redis streams |
 | Routing | first runner in the workspace | Slack user → runner mapping |
 | Slack streaming | edit 1×/sec | `chat.startStream` API |

@@ -78,7 +78,7 @@ Vitest is configured in `app/` (node environment, `api/**/*.test.ts|spec.ts`) bu
 ## Security notes
 
 - Secrets only via env; `.env.example` files are the templates, real `.env` files are gitignored.
-- Runner tokens (`ovr_{workspace}_{userkey}`): DB stores only the SHA-256 hash (`runners.tokenHash`); client keeps the token in the OS keychain, not on disk.
+- Runner tokens (random `ovr_*`, issued by `runner.createToken`): DB stores only the SHA-256 hash (`runners.tokenHash`); client keeps the token in the OS keychain, not on disk. Validation goes through the SaaS (`runner.validate`) — there is no offline/legacy token format.
 - Runner enforces `allowed_cwds` — a hard allowlist of task directories; destructive agent actions require Approve/Deny buttons in Slack.
 - Slack OAuth state uses one-time tokens in `slack_oauth_states` (CSRF protection).
 

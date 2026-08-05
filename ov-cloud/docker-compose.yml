@@ -19,10 +19,9 @@ services:
     ports:
       - "8000:8000"
     environment:
-      SLACK_BOT_TOKEN: ${SLACK_BOT_TOKEN:-}
       SLACK_SIGNING_SECRET: ${SLACK_SIGNING_SECRET}
-      OV_SAAS_URL: ${OV_SAAS_URL:-}
-      INTERNAL_API_SECRET: ${INTERNAL_API_SECRET:-}
+      OV_SAAS_URL: ${OV_SAAS_URL}
+      INTERNAL_API_SECRET: ${INTERNAL_API_SECRET}
       OPENVIKING_URL: http://openviking:1933
       OPENVIKING_ROOT_KEY: ${OPENVIKING_ROOT_KEY}
       MEMORY_MCP_URL: ${MEMORY_MCP_URL:-}     # public MCP endpoint for agents

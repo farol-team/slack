@@ -21,55 +21,41 @@ from .task_router import Task, router
 
 log = logging.getLogger("slack_app")
 
-def create_bolt(signing_secret: str, authorize_fn, fallback_token: str = "") -> AsyncApp:
+def create_bolt(signing_secret: str, authorize_fn) -> AsyncApp:
     """Build the Bolt app with multi-workspace authorize."""
-    if fallback_token:
-        return AsyncApp(signing_secret=signing_secret, token=fallback_token)
     return AsyncApp(signing_secret=signing_secret, authorize=authorize_fn)
 
 
-def make_installation_resolver(saas_url: str, internal_secret: str,
-                               fallback_token: str = "", fallback_account: str = ""):
+def make_installation_resolver(saas_url: str, internal_secret: str):
     """Resolve Slack team -> SaaS installation {bot_token, ov_account_id}.
-    Cached per team. Fallback covers single-workspace dev mode."""
+    Cached per team."""
     cache: dict[str, dict] = {}
 
     async def resolve(team_id: str) -> dict:
         if team_id in cache:
             return cache[team_id]
-        inst = None
-        if saas_url and internal_secret and team_id:
-            try:
-                async with httpx.AsyncClient(timeout=10) as client:
-                    res = await client.get(
-                        f"{saas_url}/api/trpc/slack.installationByTeam",
-                        params={"input": json.dumps({"json": {"teamId": team_id}})},
-                        headers={"x-internal-secret": internal_secret},
-                    )
-                data = res.json().get("result", {}).get("data", {}).get("json", {})
-                if data.get("botToken"):
-                    inst = {
-                        "bot_token": data["botToken"],
-                        "ov_account_id": data.get("ovAccountId") or team_id,
-                    }
-            except Exception:
-                log.exception("installationByTeam failed for %s", team_id)
-        if inst is None and fallback_token:
-            inst = {"bot_token": fallback_token,
-                    "ov_account_id": fallback_account or team_id}
-        if inst is None:
+        async with httpx.AsyncClient(timeout=10) as client:
+            res = await client.get(
+                f"{saas_url}/api/trpc/slack.installationByTeam",
+                params={"input": json.dumps({"json": {"teamId": team_id}})},
+                headers={"x-internal-secret": internal_secret},
+            )
+        data = res.json().get("result", {}).get("data", {}).get("json", {})
+        if not data.get("botToken"):
             raise RuntimeError(f"no installation for team {team_id}")
+        inst = {
+            "bot_token": data["botToken"],
+            "ov_account_id": data.get("ovAccountId") or team_id,
+        }
         cache[team_id] = inst
         return inst
 
     return resolve
 
 
-def make_authorize(saas_url: str, internal_secret: str, fallback_token: str,
-                   fallback_account: str = ""):
+def make_authorize(saas_url: str, internal_secret: str):
     """Multi-workspace authorize for Bolt, built on the installation resolver."""
-    resolve = make_installation_resolver(saas_url, internal_secret,
-                                         fallback_token, fallback_account)
+    resolve = make_installation_resolver(saas_url, internal_secret)
 
     async def authorize(enterprise_id, team_id, user_id=None, **kwargs):
         inst = await resolve(team_id)
@@ -231,24 +217,26 @@ class IngestionBuffer:
 def register_handlers(app: AsyncApp, renderer: SlackRenderer,
                       ingestion: IngestionBuffer, default_cwd: str,
                       memory_mcp_url: Optional[str],
-                      resolve_installation=None) -> None:
+                      resolve_installation) -> None:
 
     @app.event("app_mention")
     async def on_mention(event, say, context):
         channel = event["channel"]
         thread_ts = event.get("thread_ts", event["ts"])
         prompt = event["text"]
-        team_id = context.get("team_id", "default")
+        team_id = context["team_id"]
 
         # Runners register under the SaaS ovAccountId (runner.validate),
         # not the Slack team id — resolve the installation to bridge the
         # two id spaces before routing.
-        workspace = team_id
-        if resolve_installation:
-            try:
-                workspace = (await resolve_installation(team_id))["ov_account_id"]
-            except Exception:
-                log.exception("installation resolve failed for %s", team_id)
+        try:
+            workspace = (await resolve_installation(team_id))["ov_account_id"]
+        except Exception:
+            log.exception("installation resolve failed for %s", team_id)
+            await say(text="This Slack workspace is not linked to a service "
+                           "workspace. Reinstall the app from the dashboard.",
+                      thread_ts=thread_ts)
+            return
 
         runner = router.pick_runner(workspace)
         if runner is None:
@@ -268,13 +256,13 @@ def register_handlers(app: AsyncApp, renderer: SlackRenderer,
         # Skip bot messages and mentions (mentions are tasks, handled above).
         if event.get("bot_id") or event.get("subtype"):
             return
-        team_id = context.get("team_id", "default")
-        account = team_id
-        if resolve_installation:
-            try:
-                account = (await resolve_installation(team_id))["ov_account_id"]
-            except Exception:
-                pass
+        team_id = context["team_id"]
+        try:
+            account = (await resolve_installation(team_id))["ov_account_id"]
+        except Exception:
+            # No installation -> no tenant to attribute the message to.
+            log.exception("dropping message for unresolved team %s", team_id)
+            return
         line = f"[{event['ts']}] <{event.get('user', '?')}>: {event.get('text', '')}"
         ingestion.add(account, event["channel"], line)
 

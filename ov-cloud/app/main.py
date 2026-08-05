@@ -29,21 +29,19 @@ log = logging.getLogger("main")
 
 # ---------- configuration ----------
 
-SLACK_BOT_TOKEN = os.getenv("SLACK_BOT_TOKEN", "")   # fallback / single-tenant dev
 SLACK_SIGNING_SECRET = os.environ["SLACK_SIGNING_SECRET"]
 OPENVIKING_URL = os.getenv("OPENVIKING_URL", "http://openviking:1933")
 OPENVIKING_ROOT_KEY = os.environ["OPENVIKING_ROOT_KEY"]
 MEMORY_MCP_URL = os.getenv("MEMORY_MCP_URL")  # public MCP endpoint for agents
 DEFAULT_CWD = os.getenv("DEFAULT_CWD", "/home/user/projects")
-OV_SAAS_URL = os.getenv("OV_SAAS_URL", "")           # SaaS control plane URL
-INTERNAL_API_SECRET = os.getenv("INTERNAL_API_SECRET", "")
+OV_SAAS_URL = os.environ["OV_SAAS_URL"].rstrip("/")  # SaaS control plane URL
+INTERNAL_API_SECRET = os.environ["INTERNAL_API_SECRET"]
 
 # ---------- wiring ----------
 
 ov_client = OpenVikingClient(OPENVIKING_URL, OPENVIKING_ROOT_KEY)
-authorize_fn = make_authorize(OV_SAAS_URL, INTERNAL_API_SECRET, SLACK_BOT_TOKEN)
-resolve_installation = make_installation_resolver(
-    OV_SAAS_URL, INTERNAL_API_SECRET, SLACK_BOT_TOKEN)
+authorize_fn = make_authorize(OV_SAAS_URL, INTERNAL_API_SECRET)
+resolve_installation = make_installation_resolver(OV_SAAS_URL, INTERNAL_API_SECRET)
 
 
 async def resolve_bot_token(team_id: str) -> str:
@@ -58,7 +56,7 @@ renderer = SlackRenderer(resolve_bot_token)
 ingestion = IngestionBuffer(ov_client)
 importer = ImportManager(ov_client, resolve_bot_token, resolve_ov_account)
 
-bolt = create_bolt(SLACK_SIGNING_SECRET, authorize_fn, SLACK_BOT_TOKEN)
+bolt = create_bolt(SLACK_SIGNING_SECRET, authorize_fn)
 register_handlers(bolt, renderer, ingestion, DEFAULT_CWD, MEMORY_MCP_URL,
                   resolve_installation=resolve_installation)
 slack_handler = AsyncSlackRequestHandler(bolt)
