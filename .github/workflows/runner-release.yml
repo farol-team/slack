@@ -1,6 +1,13 @@
 # Builds the headless Farol Runner for macOS (arm64 + x64) and Linux
 # and publishes the binaries to a GitHub Release on runner-v* tags.
 # The desktop (Tauri) app is not part of this pipeline yet.
+#
+# Optional repository secrets — when APPLE_CERTIFICATE is absent the macOS
+# builds still succeed, just unsigned:
+#   APPLE_CERTIFICATE           base64 .p12 Developer ID Application cert
+#   APPLE_CERTIFICATE_PASSWORD  password of that .p12
+#   APPLE_ID / APPLE_PASSWORD   Apple ID + app-specific password (notarization)
+#   APPLE_TEAM_ID               Developer Team ID
 name: runner-release
 
 on:
@@ -32,6 +39,9 @@ jobs:
     defaults:
       run:
         working-directory: runner
+    env:
+      # Step-level `if` can't read the secrets context — mirror it into env.
+      APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
@@ -44,6 +54,44 @@ jobs:
         run: cargo build --release -p farol-core --example headless --target ${{ matrix.target }}
       - name: Stage asset
         run: cp target/${{ matrix.target }}/release/examples/headless ${{ matrix.asset }}
+      - name: Import signing certificate
+        if: ${{ runner.os == 'macOS' && env.APPLE_CERTIFICATE != '' }}
+        env:
+          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+        run: |
+          KEYCHAIN=build.keychain
+          security create-keychain -p ci $KEYCHAIN
+          security default-keychain -s $KEYCHAIN
+          # Keep the keychain on the search list and unlocked: a locked keychain
+          # makes codesign block forever on a GUI prompt that never appears here.
+          security list-keychains -d user -s $KEYCHAIN login.keychain
+          security unlock-keychain -p ci $KEYCHAIN
+          security set-keychain-settings -lut 21600 $KEYCHAIN
+          echo "$APPLE_CERTIFICATE" | base64 --decode > cert.p12
+          security import cert.p12 -k $KEYCHAIN -P "$APPLE_CERTIFICATE_PASSWORD" -T /usr/bin/codesign
+          security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k ci $KEYCHAIN
+          rm cert.p12
+      - name: Sign and notarize
+        if: ${{ runner.os == 'macOS' && env.APPLE_CERTIFICATE != '' }}
+        env:
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        run: |
+          IDENTITY=$(security find-identity -v -p codesigning build.keychain \
+            | awk -F'"' '/Developer ID Application/ {print $2; exit}')
+          echo "Signing with: $IDENTITY"
+          codesign --force --timestamp --options runtime \
+            --sign "$IDENTITY" ${{ matrix.asset }}
+          codesign --verify --strict --verbose=2 ${{ matrix.asset }}
+          # notarytool only accepts containers — a bare Mach-O goes in a zip.
+          # A CLI binary cannot be stapled (stapler needs .app/.dmg/.pkg);
+          # Gatekeeper resolves the ticket online on first run instead.
+          ditto -c -k --keepParent ${{ matrix.asset }} notarize.zip
+          xcrun notarytool submit notarize.zip \
+            --apple-id "$APPLE_ID" --password "$APPLE_PASSWORD" \
+            --team-id "$APPLE_TEAM_ID" --wait
+          rm notarize.zip
       - uses: actions/upload-artifact@v4
         with:
           name: ${{ matrix.asset }}
@@ -67,6 +115,7 @@ jobs:
             Headless Farol Runner. Download the binary for your platform,
             `chmod +x` it and run — it opens the browser to authorize itself.
 
-            macOS note: the binary is unsigned for now; clear the quarantine
-            flag before the first run:
+            macOS note: signed and notarized builds run as-is. If this build
+            was produced without the Apple secrets and macOS refuses to open
+            it, clear the quarantine flag:
             `xattr -d com.apple.quarantine ./farol-runner-darwin-*`
