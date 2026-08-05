@@ -261,7 +261,7 @@ class IngestionBuffer:
 
 def register_handlers(app: AsyncApp, renderer: SlackRenderer,
                       ingestion: IngestionBuffer, default_cwd: str,
-                      memory_mcp_url: Optional[str],
+                      build_memory,
                       resolve_installation, resolve_member) -> None:
 
     @app.event("app_mention")
@@ -303,9 +303,12 @@ def register_handlers(app: AsyncApp, renderer: SlackRenderer,
 
         # slack_team must stay the Slack team id: the renderer resolves
         # the bot token by team, not by OV account.
+        # Memory scope = this channel only: the reply's audience is the
+        # channel, so the agent must not read what this channel can't.
+        memory = build_memory(workspace, user_key, channel)
         await router.assign(runner=runner, channel=channel, thread_ts=thread_ts,
                             prompt=prompt, cwd=default_cwd,
-                            mcp_url=memory_mcp_url,
+                            memory=memory,
                             slack_team=team_id)
 
     @app.event("message")

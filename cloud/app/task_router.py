@@ -105,7 +105,7 @@ class TaskRouter:
 
     async def assign(self, runner: Runner, channel: str, thread_ts: str,
                      prompt: str, cwd: str, agent: str = "",
-                     mcp_url: Optional[str] = None,
+                     memory: Optional[p.MemoryConfig] = None,
                      resume_session: Optional[str] = None,
                      slack_team: str = "") -> Task:
         task = Task(task_id=uuid4(), runner=runner, slack_channel=channel,
@@ -113,7 +113,6 @@ class TaskRouter:
         self.tasks[task.task_id] = task
         self.thread_index[(channel, thread_ts)] = task.task_id
 
-        memory = p.MemoryConfig(mcp_url=mcp_url, user_key=runner.user_key) if mcp_url else None
         msg = p.AssignTask(
             task_id=task.task_id, slack_channel=channel, slack_thread_ts=thread_ts,
             prompt=prompt, agent=agent or (runner.agents[0] if runner.agents else ""),

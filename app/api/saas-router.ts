@@ -195,11 +195,21 @@ export const runnerRouter = createRouter({
 const OV_URL = process.env.OPENVIKING_URL ?? "";
 const OV_ROOT_KEY = process.env.OPENVIKING_ROOT_KEY ?? "";
 
-async function ovFetch(path: string, body: unknown) {
+async function ovFetch(path: string, body: unknown, account?: string) {
   if (!OV_URL) throw new TRPCError({ code: "PRECONDITION_FAILED", message: "OpenViking not configured" });
+  // Trusted mode: identity travels in headers, root key authorizes us
+  // as the identity-injecting upstream.
+  const headers: Record<string, string> = {
+    "Content-Type": "application/json",
+    "X-API-Key": OV_ROOT_KEY,
+  };
+  if (account) {
+    headers["X-OpenViking-Account"] = account;
+    headers["X-OpenViking-User"] = "farol-dashboard";
+  }
   const res = await fetch(`${OV_URL}${path}`, {
     method: "POST",
-    headers: { "Content-Type": "application/json", "X-API-Key": OV_ROOT_KEY },
+    headers,
     body: JSON.stringify(body),
   });
   if (!res.ok) throw new TRPCError({ code: "BAD_GATEWAY", message: `OpenViking ${res.status}` });
@@ -214,12 +224,15 @@ export const memoryRouter = createRouter({
       const db = getDb();
       const [ws] = await db.select().from(workspaces).where(eq(workspaces.id, input.workspaceId)).limit(1);
       if (!ws) throw new TRPCError({ code: "NOT_FOUND" });
-      const data = (await ovFetch("/api/v1/search/find", {
-        account_id: ws.ovAccountId,
-        query: input.query,
-        target_uri: input.scope ?? `/${ws.ovAccountId}/resources/`,
-        limit: 10,
-      })) as { results?: unknown[] };
+      const data = (await ovFetch(
+        "/api/v1/search/find",
+        {
+          query: input.query,
+          target_uri: input.scope ?? "viking://resources/",
+          limit: 10,
+        },
+        ws.ovAccountId,
+      )) as { results?: unknown[] };
       return { results: data.results ?? [] };
     }),
 

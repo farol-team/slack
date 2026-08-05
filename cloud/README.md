@@ -30,12 +30,21 @@ app/
   → TaskResult → final status + Resume button (session_id is stored)
 ```
 
-**Memory (model C):**
+**Memory (channel-scoped, via the gateway):**
 - All channel messages → `IngestionBuffer` (batches of 50 msgs / 5 min) →
-  `OpenViking /{workspace}/resources/slack/{channel}/{date}.md`; L0/L1 are generated automatically.
-- On connect, the runner passes its OpenViking `user_key` — the cloud forwards it to
-  the agent in `AssignTask.memory` as an MCP endpoint → the agent reads the team's memory.
-- Multi-tenancy is native: workspace = OpenViking account, ACL is handled by OpenViking itself.
+  OpenViking `viking://resources/slack/{channel_id}/{date}.md` (account = workspace);
+  L0/L1 are generated automatically. The historical import uses the same layout.
+- OpenViking runs in **trusted mode**: only this service talks to it, injecting
+  `X-OpenViking-Account` / `X-OpenViking-User` headers (root key authorizes us as the
+  identity-injecting upstream). Configure `ov.conf` with `auth_mode: "trusted"` and
+  `root_api_key` = `OPENVIKING_ROOT_KEY`.
+- Agents never see OpenViking directly. `AssignTask.memory` carries our
+  **memory gateway** (`/memory/mcp`, see `app/gateway.py`) plus a signed task token
+  scoped to the mention's channel: the gateway proxies native OpenViking MCP tools
+  and rejects any call whose target URI leaves `viking://resources/slack/{channel}/`.
+  Audience rule: a reply is visible to the whole channel, so the agent must not read
+  what that channel's members can't.
+- The OV account is provisioned on install: SaaS OAuth callback → `/internal/provision`.
 
 ## Running
 
@@ -55,6 +64,8 @@ on every Slack event it resolves the bot token by `team_id` via
 Variables:
 - `FAROL_SAAS_URL` + `INTERNAL_API_SECRET` — link to the SaaS (required; there is
   no single-workspace fallback).
+- `FAROL_CLOUD_PUBLIC_URL` — public base URL of this service; agents reach the
+  memory gateway at `…/memory/mcp` (point it at your tunnel in dev).
 
 Slack app: scopes `app_mentions:read, channels:read, channels:history,
 chat:write, groups:read, groups:history, users:read, users:read.email`

@@ -142,13 +142,15 @@ class ImportManager:
             await asyncio.sleep(PAGE_PAUSE_SECS)
 
         # Flush day batches (append-style: one resource per channel-day).
+        # Keyed by channel ID, matching live ingestion and the per-channel
+        # memory scope enforced by the gateway.
         for day, lines in sorted(by_day.items()):
             content = f"# #{ch['name']} — {day}\n\n" + "\n".join(lines)
             try:
                 await self.ov.add_resource(
                     account_id=job.ov_account_id,
                     content=content,
-                    path=f"resources/slack/{ch['name']}/{day}.md",
+                    path=f"resources/slack/{ch['id']}/{day}.md",
                     reason=f"Slack #{ch['name']} history import",
                 )
             except Exception:

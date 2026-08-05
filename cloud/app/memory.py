@@ -1,12 +1,13 @@
-"""Thin async client for the OpenViking HTTP API.
+"""Thin async client for the OpenViking HTTP API, trusted mode.
 
-OpenViking handles multi-tenancy natively (account_id scoping):
-- account  == Slack workspace
-- resources/ are shared inside the account
-- user/{id}/memories are per-user
+The OV server runs with `auth_mode = "trusted"`: this service is the
+identity-injecting gateway, so every tenant-scoped call carries the
+root key plus `X-OpenViking-Account` / `X-OpenViking-User` headers.
+Tenancy: account == Slack workspace (ovAccountId), user == member's
+memory identity (ovUserKey) or a service identity for system writes.
 
-Docs: https://docs.openviking.ai — endpoints used below follow the
-server deployment API (v1). Adjust paths if your version differs.
+Docs: OpenViking guides/04-authentication.md (trusted mode),
+concepts/11-multi-tenant.md.
 """
 
 from __future__ import annotations
@@ -17,6 +18,9 @@ from typing import Any, Optional
 import httpx
 
 log = logging.getLogger("openviking")
+
+# Service identity for writes not attributable to a member.
+INGEST_USER = "farol-ingest"
 
 
 class OpenVikingClient:
@@ -31,52 +35,54 @@ class OpenVikingClient:
     async def close(self) -> None:
         await self._client.aclose()
 
-    # ---------- provisioning ----------
+    @staticmethod
+    def _tenant(account_id: str, user_id: str) -> dict[str, str]:
+        return {"X-OpenViking-Account": account_id, "X-OpenViking-User": user_id}
 
-    async def create_account(self, account_id: str, admin_user_id: str = "slack-bot") -> dict:
-        """Create a tenant account when a workspace installs the Slack app."""
+    # ---------- provisioning (Admin API, root only) ----------
+
+    async def create_account(self, account_id: str,
+                             admin_user_id: str = "farol-admin") -> dict:
+        """Create the tenant account when a workspace installs the Slack app.
+        Idempotent for callers: an already-existing account is not an error."""
         res = await self._client.post("/api/v1/admin/accounts", json={
             "account_id": account_id,
             "admin_user_id": admin_user_id,
         })
-        res.raise_for_status()
-        return res.json()
-
-    async def register_user(self, account_id: str, user_id: str) -> dict:
-        """Register a Slack user inside the account; returns their API key
-        which the runner uses as its memory identity."""
-        res = await self._client.post(
-            f"/api/v1/admin/accounts/{account_id}/users",
-            json={"user_id": user_id})
+        if res.status_code in (400, 409):
+            log.info("account %s already exists (%s)", account_id, res.status_code)
+            return {"account_id": account_id, "existing": True}
         res.raise_for_status()
         return res.json()
 
     # ---------- ingestion ----------
 
     async def add_resource(self, account_id: str, content: str, path: str,
-                           reason: str = "", wait: bool = False) -> dict:
-        """Write a batch of Slack messages as a resource document.
-        OpenViking auto-generates L0/L1 tiers after ingestion."""
-        res = await self._client.post("/api/v1/resources", json={
-            "account_id": account_id,
-            "to": f"/{account_id}/{path}",
-            "content": content,
-            "reason": reason,
-            "wait": wait,
-        })
+                           reason: str = "", wait: bool = False,
+                           user_id: str = INGEST_USER) -> dict:
+        """Write a batch of Slack messages as a shared resource document.
+        `path` is relative to the account, e.g. `resources/slack/C123/2026-08-05.md`."""
+        res = await self._client.post(
+            "/api/v1/resources",
+            json={"to": f"viking://{path}", "content": content,
+                  "reason": reason, "wait": wait},
+            headers=self._tenant(account_id, user_id),
+        )
         res.raise_for_status()
         return res.json()
 
-    # ---------- retrieval (used by dashboard / debugging) ----------
+    # ---------- retrieval (dashboard / debugging) ----------
 
-    async def find(self, account_id: str, query: str,
-                   target_uri: Optional[str] = None, limit: int = 10) -> dict[str, Any]:
-        res = await self._client.post("/api/v1/search/find", json={
-            "account_id": account_id,
-            "query": query,
-            "target_uri": target_uri or f"/{account_id}/resources/",
-            "limit": limit,
-        })
+    async def find(self, account_id: str, user_id: str, query: str,
+                   target_uri: Optional[str] = None,
+                   limit: int = 10) -> dict[str, Any]:
+        res = await self._client.post(
+            "/api/v1/search/find",
+            json={"query": query,
+                  "target_uri": target_uri or "viking://resources/",
+                  "limit": limit},
+            headers=self._tenant(account_id, user_id),
+        )
         res.raise_for_status()
         return res.json()
 
@@ -84,12 +90,12 @@ class OpenVikingClient:
 
     async def commit_session(self, account_id: str, user_id: str,
                              messages: list[dict]) -> dict:
-        """Commit a finished Slack thread as a session so OpenViking
-        extracts long-term memories (preferences, events, patterns)."""
-        res = await self._client.post("/api/v1/sessions/commit", json={
-            "account_id": account_id,
-            "user_id": user_id,
-            "messages": messages,
-        })
+        """Commit a finished Slack thread so OpenViking extracts
+        long-term memories (preferences, decisions, patterns)."""
+        res = await self._client.post(
+            "/api/v1/sessions/commit",
+            json={"messages": messages},
+            headers=self._tenant(account_id, user_id),
+        )
         res.raise_for_status()
         return res.json()

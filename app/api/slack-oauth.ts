@@ -302,10 +302,31 @@ export async function handleSlackCallback(
     // channel sync is non-fatal
   }
 
-  // Kick off the historical import in cloud (fire-and-forget).
-  void triggerHistoryImport(data.team.id);
+  // Provision the OpenViking account, then kick off the historical
+  // import in cloud (both fire-and-forget).
+  const teamId = data.team.id;
+  void triggerProvision(teamId).then(() => triggerHistoryImport(teamId));
 
   return { redirectTo: "/dashboard?slack=connected" };
+}
+
+/** Fire-and-forget: ask cloud to create the OV account for this team. */
+export async function triggerProvision(teamId: string): Promise<void> {
+  const cloudUrl = (process.env.FAROL_CLOUD_URL ?? "").replace(/\/$/, "");
+  if (!cloudUrl || !INTERNAL_SECRET) return;
+  try {
+    await fetch(`${cloudUrl}/internal/provision`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "x-internal-secret": INTERNAL_SECRET,
+      },
+      body: JSON.stringify({ team_id: teamId }),
+    });
+  } catch {
+    // provisioning is retried implicitly: the account is also created
+    // lazily by trusted-mode writes; dashboard shows memory status
+  }
 }
 
 /** Fire-and-forget: ask cloud to start the historical import. */
