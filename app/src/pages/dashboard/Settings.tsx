@@ -20,6 +20,9 @@ export default function Settings() {
   const setPlan = trpc.billing.setPlan.useMutation({
     onSuccess: () => utils.workspace.list.invalidate(),
   });
+  const setStoreFiles = trpc.billing.setStoreFiles.useMutation({
+    onSuccess: () => utils.workspace.list.invalidate(),
+  });
 
   if (!ws) return <p className="text-muted-foreground">Create a workspace on the Overview page first.</p>;
 
@@ -50,6 +53,28 @@ export default function Settings() {
             </span>
           </div>
           <div className="flex justify-between"><span className="text-muted-foreground">Your role</span><span>{ws.role}</span></div>
+          <div className="flex items-center justify-between pt-2 border-t">
+            <div>
+              <div>Store shared files in memory</div>
+              <div className="text-muted-foreground text-xs">
+                Files posted in channels are read by OpenViking and become
+                searchable. Off keeps only the conversation text.
+              </div>
+            </div>
+            <Button
+              variant={ws.storeFiles ? "default" : "outline"}
+              size="sm"
+              disabled={ws.role !== "owner" || setStoreFiles.isPending}
+              onClick={() =>
+                setStoreFiles.mutate({
+                  workspaceId: ws.id,
+                  enabled: !ws.storeFiles,
+                })
+              }
+            >
+              {ws.storeFiles ? "On" : "Off"}
+            </Button>
+          </div>
         </CardContent>
       </Card>
 

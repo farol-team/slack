@@ -38,6 +38,7 @@ settings:
     bot_events:
       - app_mention
       - message.im       # a DM to the bot is a task, no mention needed
+      - file_deleted     # deleting in Slack removes the copy in memory
       - message.channels
       - message.groups   # приватные каналы тоже пишем в память (OV channel = id канала)
   org_deploy_enabled: false

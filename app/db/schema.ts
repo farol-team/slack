@@ -61,6 +61,9 @@ export const workspaces = pgTable("workspaces", {
   /** OpenViking account id (= tenant boundary). */
   ovAccountId: varchar("ovAccountId", { length: 64 }).notNull().unique(),
   plan: workspacePlan("plan").default("free").notNull(),
+  /** Whether files shared in Slack are imported into team memory. On by
+   *  default; a team whose policy forbids copies turns it off here. */
+  storeFiles: boolean("storeFiles").default(true).notNull(),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
 });
 export type Workspace = typeof workspaces.$inferSelect;

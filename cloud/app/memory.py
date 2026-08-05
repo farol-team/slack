@@ -88,6 +88,72 @@ class OpenVikingClient:
         res.raise_for_status()
         return res.json()
 
+    async def import_file(self, account_id: str, name: str, content: bytes,
+                          mime: str, dest_dir: str,
+                          user_id: str = INGEST_USER,
+                          reason: str = "") -> Optional[str]:
+        """Hand a shared file to OpenViking and file it under `dest_dir`.
+
+        OpenViking does the reading: the importer runs semantic extraction and
+        embeddings, and media through the VLM — a PDF or a screenshot becomes
+        searchable content rather than a line saying one existed.
+
+        It always lands the import at `viking://resources/<file stem>`, which
+        no parameter moves, and that path is outside the channel scope an
+        agent's token carries. So the file is uploaded under a name unique to
+        it (the Slack file id), then moved with WebDAV into the channel's own
+        directory. Returns the final uri, or None when the import failed."""
+        headers = self._tenant(account_id, user_id)
+
+        upload = await self._client.post(
+            "/api/v1/resources/temp_upload",
+            files={"file": (name, content, mime or "application/octet-stream")},
+            headers=headers,
+        )
+        upload.raise_for_status()
+        temp_id = (upload.json().get("result") or {}).get("temp_file_id")
+        if not temp_id:
+            log.warning("temp_upload returned no id for %s", name)
+            return None
+
+        imported = await self._client.post(
+            "/api/v1/resources",
+            json={"temp_file_id": temp_id, "wait": True,
+                  "reason": reason or f"file shared in Slack: {name}"},
+            headers=headers,
+            timeout=180.0,
+        )
+        imported.raise_for_status()
+        root_uri = (imported.json().get("result") or {}).get("root_uri")
+        if not root_uri:
+            log.warning("import returned no root_uri for %s", name)
+            return None
+
+        # The channel directory exists (day files live there); its `files`
+        # collection may not. 405 means it already does.
+        mkcol = await self._client.request(
+            "MKCOL", f"/webdav/{dest_dir}", headers=headers)
+        if mkcol.status_code not in (200, 201, 405):
+            log.warning("MKCOL %s -> %s", dest_dir, mkcol.status_code)
+
+        leaf = root_uri.rsplit("/", 1)[-1]
+        source = "/webdav/" + root_uri.removeprefix("viking://")
+        dest = f"/webdav/{dest_dir}/{leaf}"
+        moved = await self._client.request(
+            "MOVE", source, headers={**headers, "Destination": dest})
+        if moved.status_code not in (200, 201, 204):
+            log.warning("MOVE %s -> %s: %s", source, dest, moved.status_code)
+            return root_uri
+        return f"viking://{dest_dir}/{leaf}"
+
+    async def delete_uri(self, account_id: str, uri: str,
+                         user_id: str = INGEST_USER) -> bool:
+        """Remove a resource — what Slack forgets, memory forgets too."""
+        path = uri.removeprefix("viking://")
+        res = await self._client.request(
+            "DELETE", f"/webdav/{path}", headers=self._tenant(account_id, user_id))
+        return res.status_code in (200, 204, 404)
+
     # ---------- filesystem (dashboard stats) ----------
 
     async def ls(self, account_id: str, user_id: str, uri: str) -> list[dict]:

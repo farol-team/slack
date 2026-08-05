@@ -55,6 +55,7 @@ def make_installation_resolver(saas_url: str, internal_secret: str,
             "bot_token": data["botToken"],
             "bot_user_id": data.get("botUserId"),
             "team_name": data.get("teamName") or "",
+            "store_files": data.get("storeFiles", True),
             "ov_account_id": data.get("ovAccountId") or team_id,
         }
         cache[team_id] = (time.monotonic(), inst)
@@ -286,54 +287,48 @@ class IngestionBuffer:
     def start(self) -> None:
         self._task = asyncio.create_task(self._flush_loop())
 
-    # What a person can read in a text editor gets stored as itself; anything
-    # else is catalogued by name and link. Extracting text from PDFs and
-    # images is a different project — pretending we did it would be worse
-    # than saying plainly that we did not.
-    TEXT_MIMES = ("text/", "application/json", "application/xml",
-                  "application/x-yaml", "application/javascript",
-                  "application/sql", "application/x-sh")
-    MAX_TEXT_BYTES = 256 * 1024
+    # A cap, not a taste: every import costs embeddings, and media costs a
+    # vision model on top. Twenty megabytes is a generous document and a
+    # ridiculous screenshot.
+    MAX_FILE_BYTES = 20 * 1024 * 1024
 
     async def add_file(self, workspace_id: str, channel: str, f: dict,
-                       bot_token: str, author: str) -> None:
-        """Keep a shared file in the channel's memory. Text is kept as text;
-        everything else is kept as a record of what exists and where."""
+                       bot_token: str, author: str) -> Optional[str]:
+        """Put a shared file into the channel's memory. OpenViking reads it —
+        text, PDF, image alike — so what lands is searchable content, not a
+        note that a file once existed."""
         name = f.get("name") or f.get("id") or "file"
-        mime = f.get("mimetype") or ""
         size = int(f.get("size") or 0)
-        safe = re.sub(r"[^A-Za-z0-9._-]+", "-", name).strip("-") or "file"
-        header = (
-            f"# {name}\n\n"
-            f"- shared by: <@{author}>\n"
-            f"- when: {datetime.now(timezone.utc).isoformat(timespec='seconds')}\n"
-            f"- type: {mime or 'unknown'}, {size} bytes\n"
-            f"- link: {f.get('permalink') or f.get('url_private') or ''}\n\n"
-        )
+        if size > self.MAX_FILE_BYTES:
+            log.info("skipping %s: %s bytes over the limit", name, size)
+            return None
 
-        body = "(binary file — contents not indexed)\n"
-        if mime.startswith(self.TEXT_MIMES) and size <= self.MAX_TEXT_BYTES:
-            try:
-                async with httpx.AsyncClient(timeout=30,
-                                             follow_redirects=True) as client:
-                    res = await client.get(
-                        f["url_private"],
-                        headers={"Authorization": f"Bearer {bot_token}"})
-                res.raise_for_status()
-                text = res.content[:self.MAX_TEXT_BYTES].decode("utf-8", "replace")
-                truncated = "\n\n(truncated)" if size > self.MAX_TEXT_BYTES else ""
-                body = f"```\n{text}\n```{truncated}\n"
-            except Exception:
-                log.exception("file download failed: %s", name)
-                body = "(file could not be read)\n"
-
-        path = f"resources/slack/{channel}/files/{f.get('id', safe)}-{safe}.md"
         try:
-            await self.ov.add_resource(workspace_id, header + body, path,
-                                       reason=f"file shared in {channel}")
-            log.info("file stored in memory: %s", path)
+            async with httpx.AsyncClient(timeout=60, follow_redirects=True) as client:
+                res = await client.get(
+                    f["url_private"],
+                    headers={"Authorization": f"Bearer {bot_token}"})
+            res.raise_for_status()
         except Exception:
-            log.exception("storing file failed: %s", path)
+            log.exception("file download failed: %s", name)
+            return None
+
+        # The Slack file id makes the name unique: the importer keys the
+        # resource off the file name, and two `design.pdf` from two channels
+        # must not collide in one flat namespace.
+        file_id = f.get("id") or re.sub(r"[^A-Za-z0-9]+", "", name)[:12]
+        safe = re.sub(r"[^A-Za-z0-9._-]+", "-", name).strip("-") or "file"
+        try:
+            uri = await self.ov.import_file(
+                workspace_id, f"{file_id}-{safe}", res.content,
+                f.get("mimetype") or "", f"resources/slack/{channel}/files",
+                reason=f"shared by {author} in Slack channel {channel}")
+        except Exception:
+            log.exception("import failed: %s", name)
+            return None
+        if uri:
+            log.info("file in memory: %s -> %s", name, uri)
+        return uri
 
     def add(self, workspace_id: str, channel: str, line: str,
             msg_ts: str = "") -> None:
@@ -513,14 +508,18 @@ def register_handlers(app: AsyncApp, renderer: SlackRenderer,
         files = event.get("files") or []
         if files:
             try:
-                bot_token = (await resolve_installation(team_id))["bot_token"]
+                inst = await resolve_installation(team_id)
             except Exception:
-                log.exception("no bot token for files in %s", team_id)
-                bot_token = ""
-            for f in files:
-                if bot_token and f.get("url_private"):
-                    await ingestion.add_file(account, event["channel"], f,
-                                             bot_token, event.get("user", "?"))
+                log.exception("no installation for files in %s", team_id)
+                inst = {}
+            # A workspace may forbid copies of its files; the text of the
+            # conversation is a separate decision, already made above.
+            if inst.get("store_files", True) and inst.get("bot_token"):
+                for f in files:
+                    if f.get("url_private"):
+                        await ingestion.add_file(account, event["channel"], f,
+                                                 inst["bot_token"],
+                                                 event.get("user", "?"))
 
         # Conversational follow-up: a plain reply in a thread whose chat
         # is idle continues the conversation (ACP session resume) on the
@@ -542,6 +541,41 @@ def register_handlers(app: AsyncApp, renderer: SlackRenderer,
         turn = await router.start_turn(chat, runner, event.get("text", ""), memory,
                                        trigger_ts=event["ts"])
         await renderer.react(turn, "eyes")
+
+    @app.event("file_deleted")
+    async def on_file_deleted(event, context):
+        """What Slack forgets, memory forgets. The event carries only the file
+        id, so the channel is looked up rather than assumed: resources are
+        named `<file id>-<name>`, and channel directories are few."""
+        file_id = event.get("file_id")
+        if not file_id:
+            return
+        team_id = context["team_id"]
+        try:
+            account = (await resolve_installation(team_id))["ov_account_id"]
+        except Exception:
+            log.exception("file_deleted: unresolved team %s", team_id)
+            return
+        try:
+            channels = await ingestion.ov.ls(account, "farol-ingest",
+                                             "viking://resources/slack")
+        except Exception:
+            log.exception("file_deleted: cannot list channels")
+            return
+        for ch in channels:
+            uri = ch.get("uri", "")
+            if not ch.get("isDir"):
+                continue
+            try:
+                entries = await ingestion.ov.ls(account, "farol-ingest",
+                                                f"{uri}/files")
+            except Exception:
+                continue
+            for entry in entries:
+                if entry.get("uri", "").rsplit("/", 1)[-1].startswith(file_id):
+                    ok = await ingestion.ov.delete_uri(account, entry["uri"])
+                    log.info("file_deleted: %s removed=%s", entry["uri"], ok)
+                    return
 
     @app.action("perm_approve")
     async def approve(ack, action):

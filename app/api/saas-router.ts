@@ -54,6 +54,7 @@ export const workspaceRouter = createRouter({
         slackTeamName: slackInstallations.teamName,
         ovAccountId: workspaces.ovAccountId,
         plan: workspaces.plan,
+        storeFiles: workspaces.storeFiles,
         createdAt: workspaces.createdAt,
         role: workspaceMembers.role,
       })
@@ -526,6 +527,20 @@ export const billingRouter = createRouter({
       if (m.role !== "owner") throw new TRPCError({ code: "FORBIDDEN", message: "Owners only" });
       const db = getDb();
       await db.update(workspaces).set({ plan: input.plan }).where(eq(workspaces.id, input.workspaceId));
+      return { ok: true };
+    }),
+
+  /** Whether files shared in Slack are copied into team memory. A policy
+   *  decision, so it is the owner's to make. */
+  setStoreFiles: authedQuery
+    .input(z.object({ workspaceId: z.number(), enabled: z.boolean() }))
+    .mutation(async ({ ctx, input }) => {
+      const m = await requireMembership(input.workspaceId, ctx.user.id);
+      if (m.role !== "owner") throw new TRPCError({ code: "FORBIDDEN", message: "Owners only" });
+      await getDb()
+        .update(workspaces)
+        .set({ storeFiles: input.enabled })
+        .where(eq(workspaces.id, input.workspaceId));
       return { ok: true };
     }),
 });

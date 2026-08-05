@@ -118,6 +118,8 @@ export const slackRouter = createRouter({
         botUserId: inst.botUserId,
         // Names the runner turns into a directory a person recognises.
         teamName: inst.teamName,
+        // Whether shared files may be copied into team memory.
+        storeFiles: ws?.storeFiles ?? true,
         teamId: inst.teamId,
         ovAccountId: ws?.ovAccountId ?? "",
       };
