@@ -1,3 +1,3 @@
 fn main() {
-    ov_runner_desktop::run()
+    farol_runner_desktop::run()
 }
