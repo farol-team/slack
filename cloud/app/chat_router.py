@@ -64,6 +64,9 @@ class Turn:
     chat: Chat
     runner: Runner
     prompt: str
+    # The message that asked: reactions land there, not on the thread root,
+    # so a follow-up in a long thread marks itself and not the first mention.
+    trigger_ts: str = ""
     status: str = "running"
     # permission_id -> slack message ts (to update the buttons)
     permission_msgs: dict[str, str] = field(default_factory=dict)
@@ -104,7 +107,11 @@ class ChatRouter:
             async with httpx.AsyncClient(timeout=10) as client:
                 res = await client.get(
                     f"{saas_url}/api/trpc/runner.validate",
-                    params={"input": json.dumps({"json": {"token": hello.token}})},
+                    params={"input": json.dumps({"json": {
+                        "token": hello.token,
+                        "agents": hello.agents,
+                        "version": hello.runner_version,
+                    }})},
                 )
             payload = res.json()
             data = payload.get("result", {}).get("data", {}).get("json", {})
@@ -216,8 +223,10 @@ class ChatRouter:
         return chat
 
     async def start_turn(self, chat: Chat, runner: Runner, prompt: str,
-                         memory: Optional[p.MemoryConfig] = None) -> Turn:
-        turn = Turn(turn_id=uuid4(), chat=chat, runner=runner, prompt=prompt)
+                         memory: Optional[p.MemoryConfig] = None,
+                         trigger_ts: str = "") -> Turn:
+        turn = Turn(turn_id=uuid4(), chat=chat, runner=runner, prompt=prompt,
+                    trigger_ts=trigger_ts or chat.thread_ts)
         self.turns[turn.turn_id] = turn
         chat.status = "running"
         chat.current_turn_id = turn.turn_id

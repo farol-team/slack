@@ -234,22 +234,35 @@ class SlackRenderer:
         for store in (self._stream_ts, self._buffer, self._last_edit, self._locks):
             store.pop(key, None)
 
+    async def react(self, turn: Turn, name: str, add: bool = True) -> None:
+        """Mark the message that asked. Best-effort: a workspace that has not
+        granted `reactions:write` still gets its answer, just without the
+        marks — an emoji is not worth failing a turn over."""
+        if not turn.trigger_ts:
+            return
+        try:
+            client = await self.client_for(turn.slack_team)
+            call = client.reactions_add if add else client.reactions_remove
+            await call(channel=turn.slack_channel, timestamp=turn.trigger_ts,
+                       name=name)
+        except Exception as e:
+            log.info("reaction %s %s failed: %s", "add" if add else "remove",
+                     name, e)
+
     async def post_result(self, turn: Turn, res: p.TurnResult) -> None:
         await self.flush(turn)
-        emoji = {"done": ":white_check_mark:", "failed": ":x:", "cancelled": ":no_entry_sign:"}
+        await self.react(turn, "eyes", add=False)
+        if res.status.value == "done":
+            # The answer is the result; a line saying so is noise.
+            await self.react(turn, "white_check_mark")
+            return
+        emoji = {"failed": ":x:", "cancelled": ":no_entry_sign:"}
         text = f"{emoji.get(res.status.value, ':question:')} Task {res.status.value}"
         if res.error:
             text += f"\n```{res.error}```"
-        blocks = [
-            {"type": "section", "text": {"type": "mrkdwn", "text": text}},
-            {"type": "context", "elements": [{"type": "mrkdwn",
-                "text": "Reply in this thread to continue the conversation."}]}
-            if res.session_id else {"type": "context", "elements": []},
-        ]
         client = await self.client_for(turn.slack_team)
         await client.chat_postMessage(channel=turn.slack_channel,
-                                      thread_ts=turn.slack_thread_ts,
-                                      text=text, blocks=[b for b in blocks if b])
+                                      thread_ts=turn.slack_thread_ts, text=text)
 
 
 # ---------------------------------------------------------------------------
@@ -389,7 +402,11 @@ def register_handlers(app: AsyncApp, renderer: SlackRenderer,
         # Memory scope = this channel only: the reply's audience is the
         # channel, so the agent must not read what this channel can't.
         memory = build_memory(workspace, user_key, channel)
-        await router.start_turn(chat, runner, prompt, memory)
+        turn = await router.start_turn(chat, runner, prompt, memory,
+                                       trigger_ts=event["ts"])
+        # The machine has it: say so on the message that asked, before the
+        # agent has anything to show.
+        await renderer.react(turn, "eyes")
 
     @app.event("message")
     async def on_message(event, context):
@@ -423,7 +440,9 @@ def register_handlers(app: AsyncApp, renderer: SlackRenderer,
         if runner is None:
             return
         memory = build_memory(chat.workspace_id, chat.user_key, chat.slack_channel)
-        await router.start_turn(chat, runner, event.get("text", ""), memory)
+        turn = await router.start_turn(chat, runner, event.get("text", ""), memory,
+                                       trigger_ts=event["ts"])
+        await renderer.react(turn, "eyes")
 
     @app.action("perm_approve")
     async def approve(ack, action):

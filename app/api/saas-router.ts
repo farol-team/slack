@@ -170,12 +170,33 @@ export const runnerRouter = createRouter({
         throw new TRPCError({ code: "BAD_REQUEST", message: "no workspace" });
       }
       const token = `frl_${randomBytes(24).toString("hex")}`;
-      await db.insert(runners).values({
-        workspaceId: member.workspaceId,
-        ownerMemberId: member.id,
-        label: row.label ?? "desktop",
-        tokenHash: sha256(token),
-      });
+      const label = row.label ?? "desktop";
+      // A machine reconnecting is the same runner, not another one: reuse its
+      // row and rotate the token, or the list fills up with its own history.
+      const [existing] = await db
+        .select()
+        .from(runners)
+        .where(
+          and(
+            eq(runners.ownerMemberId, member.id),
+            eq(runners.label, label),
+            isNull(runners.revokedAt),
+          ),
+        )
+        .limit(1);
+      if (existing) {
+        await db
+          .update(runners)
+          .set({ tokenHash: sha256(token) })
+          .where(eq(runners.id, existing.id));
+      } else {
+        await db.insert(runners).values({
+          workspaceId: member.workspaceId,
+          ownerMemberId: member.id,
+          label,
+          tokenHash: sha256(token),
+        });
+      }
       await db
         .update(runnerConnectCodes)
         .set({
@@ -235,7 +256,15 @@ export const runnerRouter = createRouter({
    *  Returns the OWNER member's memory identity — the cloud routes a
    *  mention to the runner whose owner matches the mention author. */
   validate: publicQuery
-    .input(z.object({ token: z.string() }))
+    .input(
+      z.object({
+        token: z.string(),
+        // What the runner announced in `hello`. Without these the dashboard
+        // has nothing to show but a dash.
+        agents: z.array(z.string()).optional(),
+        version: z.string().optional(),
+      }),
+    )
     .query(async ({ input }) => {
       const db = getDb();
       const [r] = await db
@@ -251,7 +280,14 @@ export const runnerRouter = createRouter({
         .where(eq(workspaceMembers.id, r.ownerMemberId))
         .limit(1);
       if (!ws || !owner) return { valid: false as const };
-      await db.update(runners).set({ lastSeenAt: new Date() }).where(eq(runners.id, r.id));
+      await db
+        .update(runners)
+        .set({
+          lastSeenAt: new Date(),
+          ...(input.agents ? { agents: input.agents } : {}),
+          ...(input.version ? { version: input.version } : {}),
+        })
+        .where(eq(runners.id, r.id));
       return {
         valid: true as const,
         workspaceId: ws.ovAccountId,

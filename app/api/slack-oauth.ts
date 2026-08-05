@@ -26,6 +26,8 @@ export const SLACK_SCOPES = [
   "chat:write",
   "groups:history",
   "groups:read",
+  // Marks the message that asked: 👀 while the runner works, ✅ when it lands.
+  "reactions:write",
 ].join(",");
 
 const redirectUri = () => `${PUBLIC_URL}/api/slack/callback`;

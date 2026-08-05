@@ -18,6 +18,7 @@ oauth_config:
       - chat:write
       - groups:read
       - groups:history
+      - reactions:write
       - users:read
       - users:read.email
 settings:
