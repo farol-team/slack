@@ -16,6 +16,9 @@ use tokio::sync::RwLock;
 struct AppState {
     status: RwLock<RunnerStatus>,
     session_manager: RwLock<Option<Arc<SessionManager>>>,
+    /// Handle on the live cloud loop, so installing an adapter can end it and
+    /// hand the cloud a fresh `hello` with the new agent in it.
+    cloud: RwLock<Option<farol_core::cloud::CloudSender>>,
 }
 
 #[derive(Clone, Serialize)]
@@ -230,6 +233,10 @@ async fn install_agent(app: AppHandle, name: String) -> Result<AgentRow, String>
         }),
     }
     cfg.save().map_err(|e| e.to_string())?;
+
+    // The live connection announced the old list and the running SessionManager
+    // holds the old config — replace both so the adapter is usable right away.
+    restart_cloud(&app).await;
     let _ = app.emit("status-changed", ());
 
     Ok(AgentRow {
@@ -250,6 +257,19 @@ async fn add_allowed_cwd(path: String) -> Result<(), String> {
 }
 
 // ---------- Cloud wiring ----------
+
+/// Tear down the current connection and dial again. Used when what `hello`
+/// says has changed; `start_cloud` re-reads config.json on its way in.
+async fn restart_cloud(app: &AppHandle) {
+    let state = app.state::<AppState>();
+    if let Some(cloud) = state.cloud.write().await.take() {
+        cloud.stop();
+    }
+    if let Some(sm) = state.session_manager.write().await.take() {
+        sm.shutdown().await;
+    }
+    start_cloud(app.clone()).await;
+}
 
 async fn start_cloud(app: AppHandle) {
     let cfg = match RunnerConfig::load() {
@@ -273,10 +293,18 @@ async fn start_cloud(app: AppHandle) {
     };
     tracing::info!("start_cloud: token прочитан, len={}", token.len());
 
+    // Announce only adapters that are actually on this machine: the cloud
+    // routes a turn to a name from this list, and a name that is not here
+    // would only fail later, at spawn time, in the Slack thread.
+    let prefix = agents_prefix(&app).ok();
+    let installed = cfg.installed_agent_names(prefix.as_deref());
+    if installed.is_empty() {
+        tracing::warn!("start_cloud: no ACP adapter installed — nothing to announce");
+    }
     let hello = CloudMessage::Hello(Hello {
         token,
         runner_version: env!("CARGO_PKG_VERSION").into(),
-        agents: cfg.agents.iter().map(|a| a.name.clone()).collect(),
+        agents: installed.clone(),
         os: std::env::consts::OS.into(),
     });
 
@@ -288,14 +316,15 @@ async fn start_cloud(app: AppHandle) {
     .await;
 
     let state = app.state::<AppState>();
-    let sm = Arc::new(SessionManager::new(cfg.clone(), cloud));
+    let sm = Arc::new(SessionManager::new(cfg.clone(), cloud.clone()));
     *state.session_manager.write().await = Some(sm);
+    *state.cloud.write().await = Some(cloud);
     {
         let mut s = state.status.write().await;
         s.logged_in = true;
         s.connected = true;
         s.workspace_id = cfg.workspace_id.clone();
-        s.agents = cfg.agents.iter().map(|a| a.name.clone()).collect();
+        s.agents = installed;
     }
     let _ = app.emit("status-changed", ());
 }
@@ -335,6 +364,7 @@ pub fn run() {
         .manage(AppState {
             status: RwLock::new(RunnerStatus::default()),
             session_manager: RwLock::new(None),
+            cloud: RwLock::new(None),
         })
         .invoke_handler(tauri::generate_handler![
             get_status,

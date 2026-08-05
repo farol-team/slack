@@ -108,6 +108,17 @@ impl RunnerConfig {
         Ok(())
     }
 
+    /// The agents this machine can actually run — what the runner advertises
+    /// to the cloud, so a turn is never routed to an adapter that is not here.
+    /// `prefix` is the runner's own install dir, when it has one.
+    pub fn installed_agent_names(&self, prefix: Option<&std::path::Path>) -> Vec<String> {
+        self.agents
+            .iter()
+            .filter(|a| crate::agents::is_installed(&a.command, prefix))
+            .map(|a| a.name.clone())
+            .collect()
+    }
+
     /// Security gate: reject any cwd outside the allowlist.
     pub fn is_cwd_allowed(&self, cwd: &std::path::Path) -> bool {
         self.allowed_cwds.iter().any(|base| cwd.starts_with(base))

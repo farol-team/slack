@@ -75,6 +75,17 @@ pub fn resolve(command: &str, prefix: Option<&Path>) -> Option<PathBuf> {
         .find(|c| c.is_file())
 }
 
+/// Whether a configured agent can actually be spawned right now. A command
+/// with a path in it is checked where it points — that is what `install`
+/// writes into config.json; a bare name is looked up as `resolve` does.
+pub fn is_installed(command: &str, prefix: Option<&Path>) -> bool {
+    let p = Path::new(command);
+    if p.components().count() > 1 {
+        return p.is_file();
+    }
+    resolve(command, prefix).is_some()
+}
+
 /// The one command installing this adapter would run.
 ///
 /// Into a prefix the runner owns, never the person's own node installation:

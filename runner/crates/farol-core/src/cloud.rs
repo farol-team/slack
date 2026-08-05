@@ -13,6 +13,21 @@ use tracing::{info, warn};
 #[derive(Clone)]
 pub struct CloudSender {
     tx: mpsc::UnboundedSender<String>,
+    stop: Arc<Stop>,
+}
+
+/// A flag plus a bell: the flag is what the loop head reads, the bell is what
+/// wakes it when it is parked on a socket or a backoff sleep.
+#[derive(Default)]
+struct Stop {
+    flag: std::sync::atomic::AtomicBool,
+    bell: tokio::sync::Notify,
+}
+
+impl Stop {
+    fn raised(&self) -> bool {
+        self.flag.load(std::sync::atomic::Ordering::SeqCst)
+    }
 }
 
 impl CloudSender {
@@ -20,6 +35,15 @@ impl CloudSender {
         if let Ok(s) = serde_json::to_string(msg) {
             let _ = self.tx.send(s);
         }
+    }
+
+    /// End this connection for good. The caller starts a fresh loop when what
+    /// `hello` announces has changed — the installed agents, say.
+    pub fn stop(&self) {
+        self.stop
+            .flag
+            .store(true, std::sync::atomic::Ordering::SeqCst);
+        self.stop.bell.notify_waiters();
     }
 }
 
@@ -35,13 +59,21 @@ where
     Fut: std::future::Future<Output = ()> + Send,
 {
     let (out_tx, mut out_rx) = mpsc::unbounded_channel::<String>();
-    let sender = CloudSender { tx: out_tx };
+    let stop = Arc::new(Stop::default());
+    let sender = CloudSender {
+        tx: out_tx,
+        stop: stop.clone(),
+    };
     let sender_loop = sender.clone();
     let on_message = Arc::new(on_message);
 
     tokio::spawn(async move {
         let mut backoff = Duration::from_secs(1);
         loop {
+            if stop.raised() {
+                info!("cloud loop stopped");
+                return;
+            }
             info!("connecting to {cloud_url}");
             match connect_async(&cloud_url).await {
                 Ok((ws, _)) => {
@@ -88,6 +120,11 @@ where
                                     None => return, // sender dropped, shut down
                                 }
                             }
+                            // the caller wants this connection gone
+                            _ = stop.bell.notified() => {
+                                info!("cloud loop stopped");
+                                return;
+                            }
                             // heartbeat: ping каждые 25с, реконнект если тишина > 75с
                             _ = ping_tick.tick() => {
                                 if last_seen.elapsed() > Duration::from_secs(75) {
@@ -104,10 +141,17 @@ where
                 }
                 Err(e) => warn!("connect failed: {e}"),
             }
-            tokio::time::sleep(backoff).await;
+            tokio::select! {
+                _ = tokio::time::sleep(backoff) => {}
+                _ = stop.bell.notified() => {
+                    info!("cloud loop stopped");
+                    return;
+                }
+            }
             backoff = (backoff * 2).min(Duration::from_secs(60));
         }
     });
 
     sender_loop
 }
+

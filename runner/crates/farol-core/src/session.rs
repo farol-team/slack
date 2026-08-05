@@ -48,12 +48,17 @@ impl SessionManager {
             return;
         }
 
+        // Fall back to the first adapter that is actually on this machine —
+        // falling back to the first *configured* one would spawn something
+        // absent and surface as a cryptic spawn error in the Slack thread.
         let agent = match self.config.agents.iter().find(|a| a.name == task.agent)
-            .or_else(|| self.config.agents.first())
+            .or_else(|| self.config.agents.iter()
+                .find(|a| crate::agents::is_installed(&a.command, None)))
         {
             Some(a) => a.clone(),
             None => {
-                self.finish(task.turn_id, TurnStatus::Failed, None, Some("no agents configured".into()));
+                self.finish(task.turn_id, TurnStatus::Failed, None,
+                            Some("no ACP adapter installed on this runner".into()));
                 return;
             }
         };

@@ -44,16 +44,25 @@ async fn main() -> anyhow::Result<()> {
         None => connect_flow(&cfg).await?,
     };
 
+    // Announce only what can actually be spawned — a turn routed to an adapter
+    // that is not on this machine would fail at spawn time in the thread.
+    let installed = cfg.installed_agent_names(None);
+    if installed.is_empty() {
+        tracing::warn!(
+            "no ACP adapter found on this machine — install one, e.g. \
+             `npm install -g @agentclientprotocol/claude-agent-acp`"
+        );
+    }
     let hello = CloudMessage::Hello(Hello {
         token,
         runner_version: concat!(env!("CARGO_PKG_VERSION"), "-headless").into(),
-        agents: cfg.agents.iter().map(|a| a.name.clone()).collect(),
+        agents: installed.clone(),
         os: std::env::consts::OS.into(),
     });
 
     info!("cloud_url={} agents={:?} allowed_cwds={:?}",
           cfg.cloud_url,
-          cfg.agents.iter().map(|a| &a.name).collect::<Vec<_>>(),
+          installed,
           cfg.allowed_cwds);
 
     // The message handler needs the SessionManager, but it depends on the CloudSender,
