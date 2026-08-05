@@ -5,7 +5,9 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import re
 import time
+from datetime import datetime, timezone
 from collections import defaultdict
 from typing import Optional
 
@@ -284,6 +286,55 @@ class IngestionBuffer:
     def start(self) -> None:
         self._task = asyncio.create_task(self._flush_loop())
 
+    # What a person can read in a text editor gets stored as itself; anything
+    # else is catalogued by name and link. Extracting text from PDFs and
+    # images is a different project — pretending we did it would be worse
+    # than saying plainly that we did not.
+    TEXT_MIMES = ("text/", "application/json", "application/xml",
+                  "application/x-yaml", "application/javascript",
+                  "application/sql", "application/x-sh")
+    MAX_TEXT_BYTES = 256 * 1024
+
+    async def add_file(self, workspace_id: str, channel: str, f: dict,
+                       bot_token: str, author: str) -> None:
+        """Keep a shared file in the channel's memory. Text is kept as text;
+        everything else is kept as a record of what exists and where."""
+        name = f.get("name") or f.get("id") or "file"
+        mime = f.get("mimetype") or ""
+        size = int(f.get("size") or 0)
+        safe = re.sub(r"[^A-Za-z0-9._-]+", "-", name).strip("-") or "file"
+        header = (
+            f"# {name}\n\n"
+            f"- shared by: <@{author}>\n"
+            f"- when: {datetime.now(timezone.utc).isoformat(timespec='seconds')}\n"
+            f"- type: {mime or 'unknown'}, {size} bytes\n"
+            f"- link: {f.get('permalink') or f.get('url_private') or ''}\n\n"
+        )
+
+        body = "(binary file — contents not indexed)\n"
+        if mime.startswith(self.TEXT_MIMES) and size <= self.MAX_TEXT_BYTES:
+            try:
+                async with httpx.AsyncClient(timeout=30,
+                                             follow_redirects=True) as client:
+                    res = await client.get(
+                        f["url_private"],
+                        headers={"Authorization": f"Bearer {bot_token}"})
+                res.raise_for_status()
+                text = res.content[:self.MAX_TEXT_BYTES].decode("utf-8", "replace")
+                truncated = "\n\n(truncated)" if size > self.MAX_TEXT_BYTES else ""
+                body = f"```\n{text}\n```{truncated}\n"
+            except Exception:
+                log.exception("file download failed: %s", name)
+                body = "(file could not be read)\n"
+
+        path = f"resources/slack/{channel}/files/{f.get('id', safe)}-{safe}.md"
+        try:
+            await self.ov.add_resource(workspace_id, header + body, path,
+                                       reason=f"file shared in {channel}")
+            log.info("file stored in memory: %s", path)
+        except Exception:
+            log.exception("storing file failed: %s", path)
+
     def add(self, workspace_id: str, channel: str, line: str,
             msg_ts: str = "") -> None:
         # With several of our bots in one channel the same message event
@@ -434,7 +485,10 @@ def register_handlers(app: AsyncApp, renderer: SlackRenderer,
     @app.event("message")
     async def on_message(event, say, context):
         # Skip bot messages and mentions (mentions are tasks, handled above).
-        if event.get("bot_id") or event.get("subtype"):
+        # A file upload is a message with subtype `file_share`: it carries the
+        # files people want remembered, so it is the one subtype we keep.
+        subtype = event.get("subtype")
+        if event.get("bot_id") or (subtype and subtype != "file_share"):
             return
 
         # A DM is a task without ceremony: no mention needed, and nothing of
@@ -453,6 +507,20 @@ def register_handlers(app: AsyncApp, renderer: SlackRenderer,
             return
         line = f"[{event['ts']}] <{event.get('user', '?')}>: {event.get('text', '')}"
         ingestion.add(account, event["channel"], line, event["ts"])
+
+        # Files shared in a channel belong to the channel's memory: text as
+        # itself, everything else as a record of what exists and where.
+        files = event.get("files") or []
+        if files:
+            try:
+                bot_token = (await resolve_installation(team_id))["bot_token"]
+            except Exception:
+                log.exception("no bot token for files in %s", team_id)
+                bot_token = ""
+            for f in files:
+                if bot_token and f.get("url_private"):
+                    await ingestion.add_file(account, event["channel"], f,
+                                             bot_token, event.get("user", "?"))
 
         # Conversational follow-up: a plain reply in a thread whose chat
         # is idle continues the conversation (ACP session resume) on the
