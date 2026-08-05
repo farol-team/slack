@@ -207,10 +207,9 @@ export default function Home() {
             Built on OpenViking
           </div>
           <h1 className="mx-auto max-w-3xl text-5xl font-bold leading-[1.05] tracking-tight sm:text-6xl">
-            Your AI agents
-            <br />
+            Your AI agents and{" "}
             <span className="bg-gradient-to-r from-violet-300 via-fuchsia-300 to-sky-300 bg-clip-text text-transparent">
-              + Memory
+              Memory
             </span>
             <br />
             in Slack.
