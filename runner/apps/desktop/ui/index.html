@@ -17,6 +17,7 @@
   button { width: 100%; padding: 9px; border: 0; border-radius: 8px; cursor: pointer;
            background: #0a84ff; color: white; font-weight: 600; margin-top: 6px; }
   button.ghost { background: transparent; border: 1px solid #0a84ff; color: #0a84ff; }
+  button:disabled { opacity: .5; cursor: default; }
 </style>
 </head>
 <body>
@@ -32,9 +33,11 @@
   </div>
 
   <div id="login-card" class="card" style="display:none">
-    <div style="font-size:13px">Paste the runner token from your dashboard:</div>
+    <button id="connect-btn" onclick="doConnect()">Connect with Slack</button>
+    <div id="connect-status" style="color:#888;font-size:12px;margin-top:6px"></div>
+    <div style="font-size:12px;color:#888;margin-top:12px">…or paste the runner token from your dashboard:</div>
     <input id="token" placeholder="frl_…" type="password">
-    <button onclick="doLogin()">Connect workspace</button>
+    <button class="ghost" onclick="doLogin()">Connect workspace</button>
     <div id="login-error" style="color:#ff3b30;font-size:12px;white-space:pre-wrap"></div>
   </div>
 
@@ -66,6 +69,25 @@
   window.onerror = (m, s, l, c, err) => showError(err || m);
   window.onunhandledrejection = ev => showError(ev.reason);
 
+  function resetConnect() {
+    document.getElementById('connect-btn').disabled = false;
+    document.getElementById('connect-status').textContent = '';
+  }
+
+  async function doConnect() {
+    document.getElementById('login-error').textContent = '';
+    document.getElementById('connect-btn').disabled = true;
+    document.getElementById('connect-status').textContent = 'Waiting for browser approval…';
+    try {
+      // Returns once the browser is opened; approval continues in the
+      // background and resolves via status-changed / cloud-error events.
+      await invoke('connect_with_slack');
+    } catch (e) {
+      resetConnect();
+      showError(e);
+    }
+  }
+
   async function doLogin() {
     const token = document.getElementById('token').value.trim();
     if (!token) { showError('token is empty'); return; }
@@ -83,8 +105,8 @@
     if (dir) await invoke('add_allowed_cwd', { path: dir });
   }
 
-  listen('status-changed', refresh);
-  listen('cloud-error', e => alert(e.payload));
+  listen('status-changed', () => { resetConnect(); refresh(); });
+  listen('cloud-error', e => { resetConnect(); alert(e.payload); });
   refresh();
 </script>
 </body>

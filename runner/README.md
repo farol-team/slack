@@ -76,7 +76,12 @@ FAROL_RUNNER_TOKEN=frl_... cargo run -p farol-core --example headless
 ```
 
 The token is taken from the `FAROL_RUNNER_TOKEN` env var (falls back to the OS keychain);
-config is the standard `RunnerConfig::load()`.
+config is the standard `RunnerConfig::load()`. With no token available, the runner
+starts the **runner-connect** flow: it prints an authorization URL, the user signs
+in with Slack and approves the runner, and the token is delivered automatically
+(browser handoff with polling — Slack has no device flow). The desktop app exposes
+the same flow via the "Connect with Slack" button; pasting a token remains as a
+fallback.
 
 ## Protocol (wss, JSON)
 
@@ -91,7 +96,8 @@ config is the standard `RunnerConfig::load()`.
 
 ## What's next (production)
 
-1. **Login via OAuth device flow** instead of pasting a token.
+1. ~~Login via OAuth device flow~~ — done as **runner-connect** (browser handoff
+   with polling): "Connect with Slack" in the desktop app, auto-fallback in headless.
 2. Auto-updates (`tauri-plugin-updater`) + binary signing.
 3. Detect installed agents (`which claude`, `which gemini`) on startup.
 4. Task queue and concurrency limits (currently: one task — one process).

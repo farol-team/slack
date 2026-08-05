@@ -4,6 +4,7 @@
 pub mod acp;
 pub mod cloud;
 pub mod config;
+pub mod connect;
 pub mod session;
 pub mod protocol;
 

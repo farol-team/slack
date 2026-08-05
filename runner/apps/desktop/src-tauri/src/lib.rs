@@ -2,6 +2,7 @@
 //! Tray-first UX: the app lives in the tray, window shows status/config.
 
 use farol_core::cloud::run_connection_loop;
+use farol_core::connect::{self, PollOutcome};
 use farol_core::protocol::{CloudMessage, Hello};
 use farol_core::{RunnerConfig, SessionManager};
 use serde::Serialize;
@@ -9,6 +10,7 @@ use std::sync::Arc;
 use tauri::menu::{Menu, MenuItem};
 use tauri::tray::TrayIconBuilder;
 use tauri::{AppHandle, Emitter, Manager, State};
+use tauri_plugin_opener::OpenerExt;
 use tokio::sync::RwLock;
 
 struct AppState {
@@ -47,7 +49,7 @@ async fn get_status(state: State<'_, AppState>) -> Result<RunnerStatus, String> 
 }
 
 /// Login flow: user pastes the token from the web dashboard.
-/// Production upgrade: OAuth device-flow opening the browser.
+/// Kept as a fallback; the primary flow is `connect_with_slack`.
 #[tauri::command]
 async fn login(app: AppHandle, token: String) -> Result<(), String> {
     tracing::info!("IPC login: token_len={}", token.len());
@@ -60,6 +62,78 @@ async fn login(app: AppHandle, token: String) -> Result<(), String> {
     }
     // (Re)start the cloud connection with the new token.
     start_cloud(app).await;
+    Ok(())
+}
+
+/// Machine name used as the runner label in the SaaS connect flow.
+fn machine_label() -> String {
+    hostname::get()
+        .ok()
+        .and_then(|h| h.into_string().ok())
+        .filter(|s| !s.is_empty())
+        .or_else(|| std::env::var("HOSTNAME").ok())
+        .unwrap_or_else(|| "unknown".into())
+}
+
+/// Primary login flow: "Connect with Slack". Creates a connect session on the
+/// SaaS, opens the approval URL in the system browser, then polls in the
+/// background. On approval the token is stored and the cloud starts; failures
+/// surface in the UI via the "cloud-error" event.
+#[tauri::command]
+async fn connect_with_slack(app: AppHandle) -> Result<(), String> {
+    let cfg = RunnerConfig::load().map_err(|e| e.to_string())?;
+    let label = machine_label();
+    tracing::info!("IPC connect_with_slack: saas_url={} label={label}", cfg.saas_url);
+    let session = connect::start(&cfg.saas_url, Some(&label))
+        .await
+        .map_err(|e| e.to_string())?;
+    app.opener()
+        .open_url(&session.url, None::<&str>)
+        .map_err(|e| e.to_string())?;
+
+    let app2 = app.clone();
+    let saas_url = cfg.saas_url.clone();
+    tauri::async_runtime::spawn(async move {
+        let result = connect::wait_for_approval(
+            &saas_url,
+            session.code,
+            connect::DEFAULT_POLL_INTERVAL,
+            connect::DEFAULT_POLL_TIMEOUT,
+        )
+        .await;
+        match result {
+            Ok(PollOutcome::Approved {
+                token,
+                workspace_id,
+            }) => {
+                if let Err(e) = RunnerConfig::set_token(&token) {
+                    let _ = app2.emit("cloud-error", format!("keychain write failed: {e}"));
+                    return;
+                }
+                match RunnerConfig::load() {
+                    Ok(mut cfg) => {
+                        cfg.workspace_id = Some(workspace_id);
+                        if let Err(e) = cfg.save() {
+                            tracing::error!("connect: config save failed: {e}");
+                        }
+                    }
+                    Err(e) => tracing::error!("connect: config reload failed: {e}"),
+                }
+                start_cloud(app2.clone()).await;
+                let _ = app2.emit("status-changed", ());
+            }
+            Ok(PollOutcome::Expired) => {
+                let _ = app2.emit(
+                    "cloud-error",
+                    "Authorization expired — try Connect with Slack again".to_string(),
+                );
+            }
+            Ok(PollOutcome::Pending) => unreachable!("wait_for_approval never returns Pending"),
+            Err(e) => {
+                let _ = app2.emit("cloud-error", e.to_string());
+            }
+        }
+    });
     Ok(())
 }
 
@@ -163,12 +237,13 @@ pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_autostart::Builder::new().build())
         .plugin(tauri_plugin_dialog::init())
+        .plugin(tauri_plugin_opener::init())
         .manage(AppState {
             status: RwLock::new(RunnerStatus::default()),
             session_manager: RwLock::new(None),
         })
         .invoke_handler(tauri::generate_handler![
-            get_status, login, logout, add_allowed_cwd
+            get_status, login, logout, add_allowed_cwd, connect_with_slack
         ])
         .setup(|app| {
             // Tray: Show / Quit

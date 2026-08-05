@@ -2,12 +2,15 @@
 //!
 //! Config is the standard `RunnerConfig::load()` (config.json in the platform config dir),
 //! the token comes from the `FAROL_RUNNER_TOKEN` env var (falling back to the OS keychain).
+//! With no token at all, the "Connect with Slack" flow runs instead: it prints an
+//! approval URL, waits for the browser approval, and stores the issued token.
 //!
 //! ```bash
 //! FAROL_RUNNER_TOKEN=frl_... cargo run -p farol-core --example headless
 //! ```
 
 use farol_core::cloud::{run_connection_loop, CloudSender};
+use farol_core::connect::{self, PollOutcome};
 use farol_core::protocol::{CloudMessage, Hello};
 use farol_core::{RunnerConfig, SessionManager};
 use std::sync::Arc;
@@ -19,10 +22,13 @@ async fn main() -> anyhow::Result<()> {
     tracing_subscriber::fmt::init();
 
     let cfg = RunnerConfig::load()?;
-    let token = std::env::var("FAROL_RUNNER_TOKEN")
+    let token = match std::env::var("FAROL_RUNNER_TOKEN")
         .ok()
         .or_else(|| RunnerConfig::token().ok().flatten())
-        .expect("token not found: set FAROL_RUNNER_TOKEN or add a keychain entry");
+    {
+        Some(t) => t,
+        None => connect_flow(&cfg).await?,
+    };
 
     let hello = CloudMessage::Hello(Hello {
         token,
@@ -69,4 +75,33 @@ async fn main() -> anyhow::Result<()> {
 
     tokio::signal::ctrl_c().await?;
     Ok(())
+}
+
+/// "Connect with Slack" without a UI: print the approval URL, wait for the
+/// browser approval, then store the issued token and workspace in config.
+async fn connect_flow(cfg: &RunnerConfig) -> anyhow::Result<String> {
+    let session = connect::start(&cfg.saas_url, None).await?;
+    println!("Open this URL to authorize the runner:\n  {}", session.url);
+    match connect::wait_for_approval(
+        &cfg.saas_url,
+        session.code,
+        connect::DEFAULT_POLL_INTERVAL,
+        connect::DEFAULT_POLL_TIMEOUT,
+    )
+    .await?
+    {
+        PollOutcome::Approved {
+            token,
+            workspace_id,
+        } => {
+            RunnerConfig::set_token(&token)?;
+            let mut cfg = RunnerConfig::load()?;
+            cfg.workspace_id = Some(workspace_id.clone());
+            cfg.save()?;
+            info!(%workspace_id, "runner authorized, token stored in the keychain");
+            Ok(token)
+        }
+        PollOutcome::Expired => anyhow::bail!("connect code expired — run again"),
+        PollOutcome::Pending => unreachable!("wait_for_approval never returns Pending"),
+    }
 }

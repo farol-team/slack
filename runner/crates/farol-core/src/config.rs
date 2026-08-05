@@ -13,6 +13,10 @@ const KEYRING_USER: &str = "cloud-token";
 pub struct RunnerConfig {
     /// Cloud endpoint, e.g. "wss://api.farol.team/runner/v1".
     pub cloud_url: String,
+    /// SaaS control plane URL ("Connect with Slack" flow). A different service
+    /// from cloud_url — do not conflate the two.
+    #[serde(default = "default_saas_url")]
+    pub saas_url: String,
     /// Workspace this runner is bound to (set after login).
     pub workspace_id: Option<String>,
     /// Default agent command, e.g. ["claude", "--acp"] or ["gemini", "--acp"].
@@ -28,6 +32,10 @@ fn default_true() -> bool {
     true
 }
 
+fn default_saas_url() -> String {
+    "https://app.farol.team".into()
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AgentEntry {
     pub name: String,
@@ -39,6 +47,7 @@ impl Default for RunnerConfig {
     fn default() -> Self {
         Self {
             cloud_url: "wss://api.farol.team/runner/v1".into(),
+            saas_url: default_saas_url(),
             workspace_id: None,
             agents: vec![
                 AgentEntry {
