@@ -190,7 +190,17 @@ export default function Dashboard() {
                   <div className="font-medium">Connect Slack</div>
                   {slackDone ? (
                     <div className="flex flex-wrap items-center gap-1.5 text-sm">
-                      <Badge>Connected: {overview?.workspace.slackTeamId}</Badge>
+                      <a
+                        href={`https://app.slack.com/client/${overview?.workspace.slackTeamId}`}
+                        target="_blank"
+                        rel="noreferrer"
+                      >
+                        <Badge>
+                          Connected:{" "}
+                          {overview?.workspace.slackTeamName ??
+                            overview?.workspace.slackTeamId}
+                        </Badge>
+                      </a>
                       {overview?.channels.map((c) => (
                         <Badge key={c.id} variant="secondary">
                           #{c.name}

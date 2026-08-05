@@ -34,7 +34,20 @@ export default function Settings() {
           <div className="flex justify-between"><span className="text-muted-foreground">OpenViking account</span><code>{ws.ovAccountId}</code></div>
           <div className="flex justify-between">
             <span className="text-muted-foreground">Slack team</span>
-            <span>{ws.slackTeamId ?? <Badge variant="secondary">not connected</Badge>}</span>
+            <span>
+              {ws.slackTeamId ? (
+                <a
+                  href={`https://app.slack.com/client/${ws.slackTeamId}`}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="underline underline-offset-2 hover:text-primary"
+                >
+                  {ws.slackTeamName ?? ws.slackTeamId}
+                </a>
+              ) : (
+                <Badge variant="secondary">not connected</Badge>
+              )}
+            </span>
           </div>
           <div className="flex justify-between"><span className="text-muted-foreground">Your role</span><span>{ws.role}</span></div>
         </CardContent>

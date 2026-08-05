@@ -6,6 +6,7 @@ import {
   chats,
   runnerConnectCodes,
   runners,
+  slackInstallations,
   turns,
   workspaceMembers,
   workspaces,
@@ -50,6 +51,7 @@ export const workspaceRouter = createRouter({
         id: workspaces.id,
         name: workspaces.name,
         slackTeamId: workspaces.slackTeamId,
+        slackTeamName: slackInstallations.teamName,
         ovAccountId: workspaces.ovAccountId,
         plan: workspaces.plan,
         createdAt: workspaces.createdAt,
@@ -57,6 +59,10 @@ export const workspaceRouter = createRouter({
       })
       .from(workspaceMembers)
       .innerJoin(workspaces, eq(workspaceMembers.workspaceId, workspaces.id))
+      .leftJoin(
+        slackInstallations,
+        eq(slackInstallations.teamId, workspaces.slackTeamId),
+      )
       .where(eq(workspaceMembers.userId, ctx.user.id));
   }),
 
@@ -78,6 +84,15 @@ export const workspaceRouter = createRouter({
         .where(eq(workspaces.id, input.workspaceId))
         .limit(1);
       if (!ws) throw new TRPCError({ code: "NOT_FOUND" });
+      let slackTeamName: string | null = null;
+      if (ws.slackTeamId) {
+        const [inst] = await db
+          .select({ teamName: slackInstallations.teamName })
+          .from(slackInstallations)
+          .where(eq(slackInstallations.teamId, ws.slackTeamId))
+          .limit(1);
+        slackTeamName = inst?.teamName ?? null;
+      }
       const runnerList = await db
         .select()
         .from(runners)
@@ -94,7 +109,12 @@ export const workspaceRouter = createRouter({
         .where(eq(turns.workspaceId, ws.id))
         .orderBy(desc(turns.createdAt))
         .limit(10);
-      return { workspace: ws, runners: runnerList, channels: channelList, recentTurns };
+      return {
+        workspace: { ...ws, slackTeamName },
+        runners: runnerList,
+        channels: channelList,
+        recentTurns,
+      };
     }),
 });
 
