@@ -1,5 +1,7 @@
 # Deploy — Farol SaaS (`app/`)
 
+The desktop runner ships on its own track — see `release.md`.
+
 Production runs in **Yandex Cloud**, folder **workroom** (`b1gp4vl5os7qjl9m06l6`).
 
 | Piece | Value |

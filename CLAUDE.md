@@ -58,6 +58,8 @@ npm run build                  # cargo tauri build (.app + .dmg; macOS only for 
 FAROL_RUNNER_TOKEN=frl_... cargo run -p farol-core --example headless
 ```
 
+Releasing the runner (tags, signing, auto-update) is `docs/release.md`; deploying the SaaS and cloud is `docs/deploy.md`.
+
 Dev Slack app can be created from `cloud/slack-app-manifest.yaml` (replace `request_url` with your tunnel).
 
 Minimal pre-submit check: `npm run check` + `npm run lint` (app), `cargo check` (runner), uvicorn import/startup (cloud).
