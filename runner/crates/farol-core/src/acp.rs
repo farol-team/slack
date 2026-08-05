@@ -22,11 +22,15 @@ pub enum AcpEvent {
     ToolCall { title: String },
     ToolCallUpdate { title: String },
     Plan(String),
-    /// Agent asks for permission; the outer layer relays it to Slack
-    /// and answers via `respond_permission(request_id, approved)`.
+    /// Agent asks for permission; the outer layer decides whether it is
+    /// worth a human's attention and answers via
+    /// `respond_permission(request_id, option_id)`.
     PermissionRequest {
         request_id: u64,
         description: String,
+        /// ACP ToolKind of the call — `read`, `edit`, `execute`, `search`,
+        /// `other`, … Empty when the agent sent none.
+        tool_kind: String,
         /// optionId из предложенных агентом options: куда маппятся approve/deny.
         allow_id: String,
         reject_id: String,
@@ -123,6 +127,12 @@ impl AcpClient {
                 .and_then(Value::as_str)
                 .unwrap_or("action")
                 .to_string();
+            let tool_kind = params
+                .get("toolCall")
+                .and_then(|t| t.get("kind"))
+                .and_then(Value::as_str)
+                .unwrap_or_default()
+                .to_string();
             // optionId — произвольные строки агента (у kimi: approve_once/reject),
             // kind'ы вида allow_once/reject_once — НЕ валидные optionId.
             let options = params.get("options").and_then(Value::as_array);
@@ -143,6 +153,7 @@ impl AcpClient {
                 .send(AcpEvent::PermissionRequest {
                     request_id: id,
                     description,
+                    tool_kind,
                     allow_id: pick("allow", "approve_once"),
                     reject_id: pick("reject", "reject"),
                 })

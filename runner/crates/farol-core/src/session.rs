@@ -12,11 +12,39 @@ use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::Arc;
 use tokio::sync::{mpsc, Mutex};
-use tracing::{error, info};
+use tracing::{error, info, warn};
 use uuid::Uuid;
 
 /// How long a permission request may wait for a human before it is refused.
 const PERMISSION_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(600);
+
+/// The MCP server we hand the agent for team memory (see `handle_assign`).
+const MEMORY_SERVER: &str = "team-memory";
+/// ACP ToolKinds that only observe. `edit`, `delete`, `move`, `execute` and
+/// anything unfamiliar are not here on purpose.
+const READ_ONLY_KINDS: &[&str] = &["read", "search", "fetch"];
+
+/// Whether this permission request can be answered without a human.
+///
+/// A button is worth asking for when a wrong answer costs something. Memory
+/// calls cost nothing: the gateway already pins every one of them to the
+/// asking channel and refuses writes into shared memory, so the button adds
+/// no safety — it only teaches people to click Approve without reading.
+/// Reading inside the working directory is bounded the same way, by the
+/// runner's own allowlist.
+///
+/// The call still shows up in the Slack thread as a tool_call event; what
+/// disappears is the interruption, not the visibility.
+fn auto_allowed(title: &str, tool_kind: &str) -> bool {
+    if READ_ONLY_KINDS.contains(&tool_kind) {
+        return true;
+    }
+    // MCP tools are named after their server (`mcp__team-memory__find`), but
+    // the separator differs between adapters — match the server name instead
+    // of a fixed prefix. A tool name is a single token: the space rules out
+    // a shell command that merely mentions the server.
+    title.contains(MEMORY_SERVER) && !title.contains(char::is_whitespace)
+}
 
 struct RunningTask {
     client: Arc<AcpClient>,
@@ -126,13 +154,19 @@ impl SessionManager {
             return;
         }
 
-        // MCP servers for the agent: team memory endpoint.
+        // MCP servers for the agent: team memory endpoint. `headers` is an
+        // array of {name, value} — ACP's HttpMcpServer, not a JSON map. The
+        // shape is not cosmetic: opencode rejects session/new outright, and
+        // claude-agent-acp accepts the request but silently drops the server,
+        // so the agent comes up with no memory tools at all.
         let mcp_servers = match &task.memory {
             Some(mem) => json!([{
-                "name": "team-memory",
+                "name": MEMORY_SERVER,
                 "type": "http",
                 "url": mem.mcp_url,
-                "headers": { "Authorization": format!("Bearer {}", mem.user_key) }
+                "headers": [
+                    { "name": "Authorization", "value": format!("Bearer {}", mem.user_key) }
+                ]
             }]),
             None => json!([]),
         };
@@ -140,12 +174,27 @@ impl SessionManager {
         // The resolved directory, not what the cloud asked for: they differ
         // whenever the cloud had no opinion and this machine chose.
         let cwd_str = cwd.to_string_lossy().to_string();
+        // A session that never opened cannot be prompted: prompting with an
+        // empty id used to fail deep inside the agent, with a message nobody
+        // could trace back to session/new.
         let session_id = match &task.resume_session {
             Some(sid) => {
-                client.load_session(sid, &cwd_str, mcp_servers).await.ok();
+                if let Err(e) = client.load_session(sid, &cwd_str, mcp_servers).await {
+                    // Kept as-is: some adapters take a prompt for a session
+                    // they never loaded. Worth seeing in the log either way.
+                    warn!("session/load failed for {sid}: {e}");
+                }
                 Some(sid.clone())
             }
-            None => client.new_session(&cwd_str, mcp_servers).await.ok(),
+            None => match client.new_session(&cwd_str, mcp_servers).await {
+                Ok(sid) => Some(sid),
+                Err(e) => {
+                    client.shutdown().await;
+                    self.finish(task.turn_id, TurnStatus::Failed, None,
+                                Some(format!("session/new: {e}")));
+                    return;
+                }
+            },
         };
 
         let client = Arc::new(client);
@@ -166,7 +215,16 @@ impl SessionManager {
                     AcpEvent::ToolCall { title } => (TurnEventKind::ToolCall, title, None),
                     AcpEvent::ToolCallUpdate { title } => (TurnEventKind::ToolCallUpdate, title, None),
                     AcpEvent::Plan(t) => (TurnEventKind::Plan, t, None),
-                    AcpEvent::PermissionRequest { request_id, description, allow_id, reject_id } => {
+                    AcpEvent::PermissionRequest { request_id, description, tool_kind,
+                                                  allow_id, reject_id } => {
+                        if auto_allowed(&description, &tool_kind) {
+                            info!("permission auto-allowed: {description} (kind {tool_kind})");
+                            let client = running.lock().await.client.clone();
+                            if let Err(e) = client.respond_permission(request_id, &allow_id).await {
+                                error!("auto-allow for {description} failed: {e}");
+                            }
+                            continue;
+                        }
                         let pid = request_id.to_string();
                         running.lock().await.pending_permissions
                             .insert(pid.clone(), (request_id, allow_id, reject_id.clone()));
@@ -291,5 +349,35 @@ impl SessionManager {
         for (_, task) in self.tasks.lock().await.drain() {
             task.lock().await.client.shutdown().await;
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::auto_allowed;
+
+    /// Payloads observed from claude-agent-acp 0.65 (`toolCall.kind` is
+    /// `other` for MCP calls, so the server name is what identifies memory).
+    #[test]
+    fn memory_calls_never_reach_slack() {
+        assert!(auto_allowed("mcp__team-memory__find", "other"));
+        assert!(auto_allowed("mcp__team-memory__read", "other"));
+        assert!(auto_allowed("team-memory_find", "other")); // other adapters
+    }
+
+    #[test]
+    fn reading_is_quiet_but_changing_things_is_not() {
+        assert!(auto_allowed("Read(src/main.rs)", "read"));
+        assert!(auto_allowed("Grep(fn main)", "search"));
+        assert!(!auto_allowed("Write(src/main.rs)", "edit"));
+        assert!(!auto_allowed("Bash(rm -rf build)", "execute"));
+        assert!(!auto_allowed("Delete(secrets.env)", "delete"));
+        assert!(!auto_allowed("some new tool", ""));
+    }
+
+    /// A command that merely mentions the memory server is still a command.
+    #[test]
+    fn mentioning_the_server_is_not_calling_it() {
+        assert!(!auto_allowed("Bash(curl team-memory internal)", "execute"));
     }
 }

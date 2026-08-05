@@ -168,6 +168,12 @@ Requirements: Rust stable, Node 18+, Tauri 2 system dependencies.
   `x-internal-secret` header (`INTERNAL_API_SECRET`).
 - On the runner, the directory allowlist is `root_dir` (`~/Farol`, where `<workspace>/<channel>` folders are derived) plus channel `bindings` and extra `allowed_cwds`; destructive
   agent actions are confirmed via Approve/Deny buttons in Slack.
+- Permission policy lives in `session.rs::auto_allowed`: memory calls (the
+  `team-memory` MCP server) and read-only ACP tool kinds (`read`, `search`,
+  `fetch`) are answered by the runner itself — the gateway and the directory
+  allowlist already bound them, so a button would add ritual, not safety.
+  Everything else (`edit`, `delete`, `move`, `execute`, anything unknown) goes
+  to Slack. Auto-allowed calls still stream into the thread as tool events.
 - Slack OAuth state — one-time tokens in `slack_oauth_states` (CSRF protection).
 
 ## Deployment and environment

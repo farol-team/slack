@@ -83,7 +83,7 @@ Tasks live in GitHub Issues of this repo, driven by the [farol-team/agent-flow](
 
 - Secrets only via env; `.env.example` files are the templates, real `.env` files are gitignored.
 - Runner tokens (random `frl_*`, issued by `runner.createToken`): DB stores only the SHA-256 hash (`runners.tokenHash`); client keeps the token in the OS keychain, not on disk. Validation goes through the SaaS (`runner.validate`) — there is no offline/legacy token format.
-- Runner enforces a directory allowlist: everything under `root_dir` (`~/Farol` by default, where `<workspace>/<channel>` dirs are derived), any channel `bindings`, and extra `allowed_cwds`. Nothing else is spawned in. Destructive agent actions require Approve/Deny buttons in Slack.
+- Runner enforces a directory allowlist: everything under `root_dir` (`~/Farol` by default, where `<workspace>/<channel>` dirs are derived), any channel `bindings`, and extra `allowed_cwds`. Nothing else is spawned in. Destructive agent actions require Approve/Deny buttons in Slack; memory calls and read-only tool kinds are auto-allowed by the runner (`session.rs::auto_allowed`).
 - Slack OAuth state uses one-time tokens in `slack_oauth_states` (CSRF protection).
 
 ## Known MVP limitations
