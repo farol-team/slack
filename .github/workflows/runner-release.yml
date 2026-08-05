@@ -20,7 +20,9 @@ jobs:
           - os: macos-14
             target: aarch64-apple-darwin
             asset: farol-runner-darwin-arm64
-          - os: macos-13
+          # x64 cross-compiles on the arm64 runner (one Apple SDK covers both);
+          # macos-13 Intel runners have hour-long queues on the free tier.
+          - os: macos-14
             target: x86_64-apple-darwin
             asset: farol-runner-darwin-x64
           - os: ubuntu-22.04
