@@ -188,6 +188,12 @@ class SlackRenderer:
                                             blocks=blocks)
         return res.get("ts")
 
+    def cleanup(self, task: Task) -> None:
+        """Drop per-turn streaming state once the turn is finished."""
+        key = str(task.task_id)
+        for store in (self._stream_ts, self._buffer, self._last_edit, self._locks):
+            store.pop(key, None)
+
     async def post_result(self, task: Task, res: p.TaskResult) -> None:
         await self.flush(task)
         emoji = {"done": ":white_check_mark:", "failed": ":x:", "cancelled": ":no_entry_sign:"}
@@ -196,10 +202,9 @@ class SlackRenderer:
             text += f"\n```{res.error}```"
         blocks = [
             {"type": "section", "text": {"type": "mrkdwn", "text": text}},
-            {"type": "actions", "elements": [
-                {"type": "button", "text": {"type": "plain_text", "text": "Resume session"},
-                 "action_id": "task_resume", "value": str(task.task_id)},
-            ]} if res.session_id else {"type": "context", "elements": []},
+            {"type": "context", "elements": [{"type": "mrkdwn",
+                "text": "Reply in this thread to continue the conversation."}]}
+            if res.session_id else {"type": "context", "elements": []},
         ]
         client = await self.client_for(task.slack_team)
         await client.chat_postMessage(channel=task.slack_channel,
@@ -293,6 +298,23 @@ def register_handlers(app: AsyncApp, renderer: SlackRenderer,
                            "email, then mention me again.", thread_ts=thread_ts)
             return
 
+        # Chat = the thread. First mention opens it and binds owner/cwd;
+        # later mentions are new turns resuming the same ACP session.
+        # Ownership is checked before anything else: a foreign author in
+        # an owned thread is refused even if they have their own runner.
+        # (slack_team stays the Slack team id: the renderer resolves the
+        # bot token by team, not by OV account.)
+        chat = router.get_chat(channel, thread_ts)
+        if chat is not None and chat.user_key != user_key:
+            await say(text=f"<@{author}> this conversation runs on its "
+                           "starter's machine. Mention me in a new thread to "
+                           "start your own.", thread_ts=thread_ts)
+            return
+        if chat is not None and chat.status == "running":
+            await say(text="A turn is already running in this thread — press "
+                           "Stop or wait for it to finish.", thread_ts=thread_ts)
+            return
+
         runner = router.pick_runner(workspace, user_key=user_key)
         if runner is None:
             await say(text=f"<@{author}> you don't have a runner connected. "
@@ -301,15 +323,15 @@ def register_handlers(app: AsyncApp, renderer: SlackRenderer,
                       thread_ts=thread_ts)
             return
 
-        # slack_team must stay the Slack team id: the renderer resolves
-        # the bot token by team, not by OV account.
+        if chat is None:
+            chat = router.open_chat(slack_team=team_id, channel=channel,
+                                    thread_ts=thread_ts, workspace_id=workspace,
+                                    user_key=user_key, cwd=default_cwd)
+
         # Memory scope = this channel only: the reply's audience is the
         # channel, so the agent must not read what this channel can't.
         memory = build_memory(workspace, user_key, channel)
-        await router.assign(runner=runner, channel=channel, thread_ts=thread_ts,
-                            prompt=prompt, cwd=default_cwd,
-                            memory=memory,
-                            slack_team=team_id)
+        await router.start_turn(chat, runner, prompt, memory)
 
     @app.event("message")
     async def on_message(event, context):
@@ -325,6 +347,25 @@ def register_handlers(app: AsyncApp, renderer: SlackRenderer,
             return
         line = f"[{event['ts']}] <{event.get('user', '?')}>: {event.get('text', '')}"
         ingestion.add(account, event["channel"], line)
+
+        # Conversational follow-up: a plain reply in a thread whose chat
+        # is idle continues the conversation (ACP session resume) on the
+        # owner's runner. Only the owner drives their own machine.
+        thread_ts = event.get("thread_ts")
+        if not thread_ts:
+            return
+        chat = router.get_chat(event["channel"], thread_ts)
+        if chat is None or chat.status != "idle" or chat.session_id is None:
+            return
+        author = event.get("user")
+        author_key = await resolve_member(team_id, author) if author else None
+        if author_key != chat.user_key:
+            return
+        runner = router.pick_runner(chat.workspace_id, user_key=chat.user_key)
+        if runner is None:
+            return
+        memory = build_memory(chat.workspace_id, chat.user_key, chat.slack_channel)
+        await router.start_turn(chat, runner, event.get("text", ""), memory)
 
     @app.action("perm_approve")
     async def approve(ack, action):
@@ -343,10 +384,3 @@ def register_handlers(app: AsyncApp, renderer: SlackRenderer,
         thread_ts = body["message"].get("thread_ts", body["message"]["ts"])
         await router.cancel_by_thread(channel, thread_ts)
 
-    @app.action("task_resume")
-    async def resume(ack, action, body, context):
-        await ack()
-        # Follow-up message in the same thread resumes the ACP session —
-        # the runner sends session/load with the stored session_id.
-        task_id = action["value"]
-        log.info("resume requested for task %s (prompt via next thread message)", task_id)

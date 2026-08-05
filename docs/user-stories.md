@@ -85,10 +85,11 @@ the thread; my click resolves the agent's pending permission request on my machi
 As a user, I press Stop and the task ends **and the agent process on my machine dies**.
 *Gap: cancel sends `session/cancel` but never kills the process or cleans up task state.*
 
-**C5. Resume a session** — ❌
+**C5. Resume a session** — ✅
 As a user, I continue a finished task by replying in the same thread; the agent resumes
 with full context (`session/load` with the stored session_id).
-*Gap: button handler is a stub; protocol + ACP side are ready.*
+*Done via the Chat model: a thread is a Chat owning the ACP session; a plain reply by
+the chat owner starts a new turn with `resume_session`. Only the owner drives their runner.*
 
 **C6. Pick the project** — ❌ (P0)
 As a user, I choose which of my allowed folders the task runs in (per-channel default in

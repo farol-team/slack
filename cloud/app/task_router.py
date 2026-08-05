@@ -1,5 +1,7 @@
-"""Task router: registry of connected runners, task lifecycle,
-and the Slack thread <-> task <-> ACP session mapping."""
+"""Chat router: registry of connected runners plus the conversation
+model. A Chat is a Slack thread bound to one member's runner and one
+ACP session; a Task is a single turn (prompt -> result) inside a chat.
+The wire protocol stays task-based — chats exist only cloud-side."""
 
 from __future__ import annotations
 
@@ -16,7 +18,7 @@ from fastapi import WebSocket
 
 from . import protocol as p
 
-log = logging.getLogger("task_router")
+log = logging.getLogger("chat_router")
 
 
 @dataclass
@@ -30,27 +32,57 @@ class Runner:
 
 
 @dataclass
-class Task:
-    task_id: UUID
-    runner: Runner
+class Chat:
+    """A Slack thread ↔ agent conversation. Long-lived: owns the ACP
+    session id and the bindings a thread accumulates (owner, cwd, agent).
+    BYOA: only the owner's runner ever executes turns of this chat."""
+    chat_id: UUID
+    slack_team: str
     slack_channel: str
-    slack_thread_ts: str
-    prompt: str
-    slack_team: str = ""
+    thread_ts: str
+    workspace_id: str        # ovAccountId
+    user_key: str            # owner = author of the first mention
+    cwd: str = ""
+    agent: str = ""
     session_id: Optional[str] = None
+    status: str = "idle"     # idle | running
+    current_task_id: Optional[UUID] = None
+
+
+@dataclass
+class Task:
+    """One turn of a chat."""
+    task_id: UUID
+    chat: Chat
+    runner: Runner
+    prompt: str
     status: str = "running"
     # permission_id -> slack message ts (to update the buttons)
     permission_msgs: dict[str, str] = field(default_factory=dict)
 
+    # The renderer and button handlers address tasks by their Slack
+    # coordinates — proxy them from the chat.
+    @property
+    def slack_channel(self) -> str:
+        return self.chat.slack_channel
 
-class TaskRouter:
-    """Owns runner connections and task state. In-memory for MVP;
-    swap for Postgres + Redis streams in production."""
+    @property
+    def slack_thread_ts(self) -> str:
+        return self.chat.thread_ts
+
+    @property
+    def slack_team(self) -> str:
+        return self.chat.slack_team
+
+
+class ChatRouter:
+    """Owns runner connections, chats and in-flight turns. In-memory for
+    MVP; chats/turns are mirrored to the SaaS for persistence."""
 
     def __init__(self) -> None:
-        self.runners: dict[str, Runner] = {}          # token -> Runner
-        self.tasks: dict[UUID, Task] = {}             # task_id -> Task
-        self.thread_index: dict[tuple[str, str], UUID] = {}  # (channel, ts) -> task
+        self.runners: dict[str, Runner] = {}                 # token -> Runner
+        self.chats: dict[tuple[str, str], Chat] = {}         # (channel, thread_ts)
+        self.tasks: dict[UUID, Task] = {}                    # running turns
 
     # ---------- runner lifecycle ----------
 
@@ -88,38 +120,52 @@ class TaskRouter:
         for token, r in list(self.runners.items()):
             if r is runner:
                 del self.runners[token]
-        for task in self.tasks.values():
+        for task in list(self.tasks.values()):
             if task.runner is runner and task.status == "running":
                 task.status = "orphaned"
+                task.chat.status = "idle"
         log.info("runner unregistered: ws=%s", runner.workspace_id)
 
     def pick_runner(self, workspace_id: str, user_key: Optional[str] = None) -> Optional[Runner]:
-        """Route a task to a runner. BYOA: pass the mention author's
-        user_key so the task lands on their own runner only."""
+        """Route a turn to a runner. BYOA: pass the author's user_key so
+        the turn lands on their own runner only."""
         for r in self.runners.values():
             if r.workspace_id == workspace_id and (user_key is None or r.user_key == user_key):
                 return r
         return None
 
-    # ---------- task lifecycle ----------
+    # ---------- chat / turn lifecycle ----------
 
-    async def assign(self, runner: Runner, channel: str, thread_ts: str,
-                     prompt: str, cwd: str, agent: str = "",
-                     memory: Optional[p.MemoryConfig] = None,
-                     resume_session: Optional[str] = None,
-                     slack_team: str = "") -> Task:
-        task = Task(task_id=uuid4(), runner=runner, slack_channel=channel,
-                    slack_thread_ts=thread_ts, prompt=prompt, slack_team=slack_team)
+    def get_chat(self, channel: str, thread_ts: str) -> Optional[Chat]:
+        return self.chats.get((channel, thread_ts))
+
+    def open_chat(self, *, slack_team: str, channel: str, thread_ts: str,
+                  workspace_id: str, user_key: str, cwd: str,
+                  agent: str = "") -> Chat:
+        chat = Chat(chat_id=uuid4(), slack_team=slack_team,
+                    slack_channel=channel, thread_ts=thread_ts,
+                    workspace_id=workspace_id, user_key=user_key,
+                    cwd=cwd, agent=agent)
+        self.chats[(channel, thread_ts)] = chat
+        return chat
+
+    async def start_turn(self, chat: Chat, runner: Runner, prompt: str,
+                         memory: Optional[p.MemoryConfig] = None) -> Task:
+        task = Task(task_id=uuid4(), chat=chat, runner=runner, prompt=prompt)
         self.tasks[task.task_id] = task
-        self.thread_index[(channel, thread_ts)] = task.task_id
+        chat.status = "running"
+        chat.current_task_id = task.task_id
 
         msg = p.AssignTask(
-            task_id=task.task_id, slack_channel=channel, slack_thread_ts=thread_ts,
-            prompt=prompt, agent=agent or (runner.agents[0] if runner.agents else ""),
-            cwd=cwd, resume_session=resume_session, memory=memory,
+            task_id=task.task_id, slack_channel=chat.slack_channel,
+            slack_thread_ts=chat.thread_ts, prompt=prompt,
+            agent=chat.agent or (runner.agents[0] if runner.agents else ""),
+            cwd=chat.cwd, resume_session=chat.session_id, memory=memory,
         )
         await runner.ws.send_text(encode(msg))
-        log.info("task %s assigned (%s in #%s)", task.task_id, agent, channel)
+        log.info("turn %s of chat %s (%s#%s)%s", task.task_id, chat.chat_id,
+                 chat.slack_channel, chat.thread_ts,
+                 " [resume]" if chat.session_id else "")
         return task
 
     async def on_task_event(self, ev: p.TaskEvent, slack) -> None:
@@ -143,20 +189,24 @@ class TaskRouter:
             await slack.post_status(task, f":warning: {ev.text}")
 
     async def on_task_result(self, res: p.TaskResult, slack) -> None:
-        task = self.tasks.get(res.task_id)
+        # The turn is over: fold its outcome into the chat and drop the
+        # in-flight entry — thread continuity lives on the Chat.
+        task = self.tasks.pop(res.task_id, None)
         if not task:
             return
         task.status = res.status.value
-        task.session_id = res.session_id
+        chat = task.chat
+        if res.session_id:
+            chat.session_id = res.session_id
+        chat.status = "idle"
+        chat.current_task_id = None
         await slack.post_result(task, res)
+        slack.cleanup(task)
 
     async def decide_permission(self, permission_id: str, approved: bool) -> None:
-        """Slack button -> runner. Locate the task that owns this permission.
-        Newest first: ACP request ids restart from 0 in each agent process,
-        so stale tasks collide; also skip tasks whose runner is gone."""
-        for task in reversed(list(self.tasks.values())):
-            if permission_id in task.permission_msgs \
-                    and task.runner in self.runners.values():
+        """Slack button -> runner. Locate the turn that owns this permission."""
+        for task in self.tasks.values():
+            if permission_id in task.permission_msgs:
                 await task.runner.ws.send_text(encode(p.PermissionDecision(
                     task_id=task.task_id, permission_id=permission_id, approved=approved)))
                 del task.permission_msgs[permission_id]
@@ -164,8 +214,10 @@ class TaskRouter:
         log.warning("permission %s not found", permission_id)
 
     async def cancel_by_thread(self, channel: str, thread_ts: str) -> bool:
-        task_id = self.thread_index.get((channel, thread_ts))
-        task = self.tasks.get(task_id) if task_id else None
+        chat = self.get_chat(channel, thread_ts)
+        if not chat or not chat.current_task_id:
+            return False
+        task = self.tasks.get(chat.current_task_id)
         if not task:
             return False
         await task.runner.ws.send_text(encode(p.CancelTask(task_id=task.task_id)))
@@ -177,4 +229,4 @@ def encode(msg: p.CloudMessage) -> str:
 
 
 # Singleton for the process.
-router = TaskRouter()
+router = ChatRouter()
