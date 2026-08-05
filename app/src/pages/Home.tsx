@@ -207,12 +207,20 @@ export default function Home() {
             Built on OpenViking
           </div>
           <h1 className="mx-auto max-w-3xl text-5xl font-bold leading-[1.05] tracking-tight sm:text-6xl">
-            Your AI agents and{" "}
+            Your{" "}
+            <span className="bg-gradient-to-r from-sky-300 to-violet-300 bg-clip-text text-transparent">
+              AI agents
+            </span>{" "}
+            and{" "}
             <span className="bg-gradient-to-r from-violet-300 via-fuchsia-300 to-sky-300 bg-clip-text text-transparent">
               Memory
             </span>
             <br />
-            in Slack.
+            in{" "}
+            <span className="bg-gradient-to-r from-emerald-300 to-sky-300 bg-clip-text text-transparent">
+              Slack
+            </span>
+            .
           </h1>
           <p className="mx-auto mt-6 max-w-2xl text-lg leading-relaxed text-violet-100/70">
             Bring your own agents. Not a shared bot in our
