@@ -50,13 +50,13 @@ class Chat:
     agent: str = ""
     session_id: Optional[str] = None
     status: str = "idle"     # idle | running
-    current_task_id: Optional[UUID] = None
+    current_turn_id: Optional[UUID] = None
 
 
 @dataclass
 class Turn:
     """One turn of a chat (wire protocol: one task)."""
-    task_id: UUID
+    turn_id: UUID
     chat: Chat
     runner: Runner
     prompt: str
@@ -132,11 +132,11 @@ class ChatRouter:
             if turn.runner is runner and turn.status == "running":
                 turn.status = "orphaned"
                 turn.chat.status = "idle"
-                turn.chat.current_task_id = None
-                self.turns.pop(turn.task_id, None)
+                turn.chat.current_turn_id = None
+                self.turns.pop(turn.turn_id, None)
                 self._mirror("chatSync.turn", {
                     "chatUuid": str(turn.chat.chat_id),
-                    "turnUuid": str(turn.task_id), "status": "orphaned",
+                    "turnUuid": str(turn.turn_id), "status": "orphaned",
                 })
                 if slack is not None:
                     try:
@@ -200,23 +200,23 @@ class ChatRouter:
 
     async def start_turn(self, chat: Chat, runner: Runner, prompt: str,
                          memory: Optional[p.MemoryConfig] = None) -> Turn:
-        turn = Turn(task_id=uuid4(), chat=chat, runner=runner, prompt=prompt)
-        self.turns[turn.task_id] = turn
+        turn = Turn(turn_id=uuid4(), chat=chat, runner=runner, prompt=prompt)
+        self.turns[turn.turn_id] = turn
         chat.status = "running"
-        chat.current_task_id = turn.task_id
+        chat.current_turn_id = turn.turn_id
 
         msg = p.AssignTask(
-            task_id=turn.task_id, slack_channel=chat.slack_channel,
+            task_id=turn.turn_id, slack_channel=chat.slack_channel,
             slack_thread_ts=chat.thread_ts, prompt=prompt,
             agent=chat.agent or (runner.agents[0] if runner.agents else ""),
             cwd=chat.cwd, resume_session=chat.session_id, memory=memory,
         )
         await runner.ws.send_text(encode(msg))
-        log.info("turn %s of chat %s (%s#%s)%s", turn.task_id, chat.chat_id,
+        log.info("turn %s of chat %s (%s#%s)%s", turn.turn_id, chat.chat_id,
                  chat.slack_channel, chat.thread_ts,
                  " [resume]" if chat.session_id else "")
         self._mirror("chatSync.turn", {
-            "chatUuid": str(chat.chat_id), "turnUuid": str(turn.task_id),
+            "chatUuid": str(chat.chat_id), "turnUuid": str(turn.turn_id),
             "status": "running", "prompt": prompt,
             "runnerId": runner.runner_id,
         })
@@ -253,9 +253,9 @@ class ChatRouter:
         if res.session_id:
             chat.session_id = res.session_id
         chat.status = "idle"
-        chat.current_task_id = None
+        chat.current_turn_id = None
         self._mirror("chatSync.turn", {
-            "chatUuid": str(chat.chat_id), "turnUuid": str(turn.task_id),
+            "chatUuid": str(chat.chat_id), "turnUuid": str(turn.turn_id),
             "status": turn.status,
             **({"acpSessionId": res.session_id} if res.session_id else {}),
             **({"error": res.error} if res.error else {}),
@@ -268,19 +268,19 @@ class ChatRouter:
         for turn in self.turns.values():
             if permission_id in turn.permission_msgs:
                 await turn.runner.ws.send_text(encode(p.PermissionDecision(
-                    task_id=turn.task_id, permission_id=permission_id, approved=approved)))
+                    task_id=turn.turn_id, permission_id=permission_id, approved=approved)))
                 del turn.permission_msgs[permission_id]
                 return
         log.warning("permission %s not found", permission_id)
 
     async def cancel_by_thread(self, channel: str, thread_ts: str) -> bool:
         chat = self.get_chat(channel, thread_ts)
-        if not chat or not chat.current_task_id:
+        if not chat or not chat.current_turn_id:
             return False
-        turn = self.turns.get(chat.current_task_id)
+        turn = self.turns.get(chat.current_turn_id)
         if not turn:
             return False
-        await turn.runner.ws.send_text(encode(p.CancelTask(task_id=turn.task_id)))
+        await turn.runner.ws.send_text(encode(p.CancelTask(task_id=turn.turn_id)))
         return True
 
 

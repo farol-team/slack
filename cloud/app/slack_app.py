@@ -136,7 +136,7 @@ class SlackRenderer:
         return self._clients[team_id]
 
     async def stream_chunk(self, turn: Turn, chunk: str) -> None:
-        key = str(turn.task_id)
+        key = str(turn.turn_id)
         async with self._locks[key]:
             self._buffer[key].append(chunk)
             # Slack rate limit friendly: edit at most ~1x/sec.
@@ -155,7 +155,7 @@ class SlackRenderer:
 
     async def flush(self, turn: Turn) -> None:
         """Force-final edit when the task finishes."""
-        key = str(turn.task_id)
+        key = str(turn.turn_id)
         async with self._locks[key]:
             if key in self._stream_ts and self._buffer[key]:
                 client = await self.client_for(turn.slack_team)
@@ -181,7 +181,7 @@ class SlackRenderer:
                  "style": "danger", "action_id": "perm_deny",
                  "value": permission_id or ""},
                 {"type": "button", "text": {"type": "plain_text", "text": "Stop task"},
-                 "action_id": "task_stop", "value": str(turn.task_id)},
+                 "action_id": "task_stop", "value": str(turn.turn_id)},
             ]},
         ]
         client = await self.client_for(turn.slack_team)
@@ -193,7 +193,7 @@ class SlackRenderer:
 
     def cleanup(self, turn: Turn) -> None:
         """Drop per-turn streaming state once the turn is finished."""
-        key = str(turn.task_id)
+        key = str(turn.turn_id)
         for store in (self._stream_ts, self._buffer, self._last_edit, self._locks):
             store.pop(key, None)
 
