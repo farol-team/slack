@@ -17,8 +17,7 @@ import { Plus, Copy, Trash2, CheckCircle2, Download, ChevronRight } from "lucide
 const RELEASE_BASE =
   "https://github.com/farol-team/slack/releases/latest/download";
 const DOWNLOADS = [
-  { label: "macOS (Apple Silicon)", url: `${RELEASE_BASE}/farol-runner-darwin-arm64` },
-  { label: "macOS (Intel)", url: `${RELEASE_BASE}/farol-runner-darwin-x64` },
+  { label: "macOS", url: `${RELEASE_BASE}/farol-runner-macos.dmg` },
   { label: "Linux (x64)", url: `${RELEASE_BASE}/farol-runner-linux-x64` },
 ];
 

@@ -98,8 +98,82 @@ jobs:
           path: runner/${{ matrix.asset }}
           if-no-files-found: error
 
+  # The desktop app is what a macOS user actually wants from the dashboard:
+  # a .dmg they drag to Applications, not a bare CLI binary.
+  desktop-macos:
+    runs-on: macos-14
+    timeout-minutes: 60
+    defaults:
+      run:
+        working-directory: runner/apps/desktop
+    env:
+      APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-apple-darwin,x86_64-apple-darwin
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: runner
+      - name: Import signing certificate
+        if: ${{ env.APPLE_CERTIFICATE != '' }}
+        env:
+          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+        run: |
+          KEYCHAIN=build.keychain
+          security create-keychain -p ci $KEYCHAIN
+          security default-keychain -s $KEYCHAIN
+          security list-keychains -d user -s $KEYCHAIN login.keychain
+          security unlock-keychain -p ci $KEYCHAIN
+          security set-keychain-settings -lut 21600 $KEYCHAIN
+          echo "$APPLE_CERTIFICATE" | base64 --decode > cert.p12
+          security import cert.p12 -k $KEYCHAIN -P "$APPLE_CERTIFICATE_PASSWORD" -T /usr/bin/codesign
+          security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k ci $KEYCHAIN
+          rm cert.p12
+          IDENTITY=$(security find-identity -v -p codesigning $KEYCHAIN \
+            | awk -F'"' '/Developer ID Application/ {print $2; exit}')
+          echo "APPLE_SIGNING_IDENTITY=$IDENTITY" >> $GITHUB_ENV
+      - name: Build .dmg (universal)
+        env:
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        run: |
+          npm install
+          # The repo ships a single 1024px source icon; the bundler needs the
+          # generated .icns/.ico set next to it.
+          npx tauri icon src-tauri/icons/icon.png
+          npx tauri build --target universal-apple-darwin
+      - name: Notarize and staple the .dmg
+        if: ${{ env.APPLE_CERTIFICATE != '' }}
+        env:
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        run: |
+          # Tauri notarizes and staples the .app, but ships the .dmg container
+          # only signed — Gatekeeper checks the .dmg the user double-clicks.
+          dmg=$(ls src-tauri/target/universal-apple-darwin/release/bundle/dmg/*.dmg | head -1)
+          xcrun notarytool submit "$dmg" --apple-id "$APPLE_ID" \
+            --password "$APPLE_PASSWORD" --team-id "$APPLE_TEAM_ID" --wait
+          xcrun stapler staple "$dmg"
+      - name: Stage asset
+        run: |
+          dmg=$(ls src-tauri/target/universal-apple-darwin/release/bundle/dmg/*.dmg | head -1)
+          # Stable name so releases/latest/download/... keeps working.
+          cp "$dmg" farol-runner-macos.dmg
+      - uses: actions/upload-artifact@v4
+        with:
+          name: farol-runner-macos.dmg
+          path: runner/apps/desktop/farol-runner-macos.dmg
+          if-no-files-found: error
+
   release:
-    needs: build
+    needs: [build, desktop-macos]
     runs-on: ubuntu-latest
     if: startsWith(github.ref, 'refs/tags/')
     steps:
@@ -112,10 +186,10 @@ jobs:
           name: Farol Runner ${{ github.ref_name }}
           files: dist/*
           body: |
-            Headless Farol Runner. Download the binary for your platform,
-            `chmod +x` it and run — it opens the browser to authorize itself.
+            **macOS** — download `farol-runner-macos.dmg`, drag Farol Runner to
+            Applications and launch it. Signed and notarized, so it opens
+            without Gatekeeper warnings.
 
-            macOS note: signed and notarized builds run as-is. If this build
-            was produced without the Apple secrets and macOS refuses to open
-            it, clear the quarantine flag:
-            `xattr -d com.apple.quarantine ./farol-runner-darwin-*`
+            **Headless binaries** (servers, CI, Linux) — download the one for
+            your platform, `chmod +x` it and run; it prints a URL that
+            authorizes the runner in the browser.

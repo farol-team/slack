@@ -28,8 +28,7 @@ import {
 const RELEASE_BASE =
   "https://github.com/farol-team/slack/releases/latest/download";
 const RUNNER_DOWNLOADS = {
-  macArm: `${RELEASE_BASE}/farol-runner-darwin-arm64`,
-  macIntel: `${RELEASE_BASE}/farol-runner-darwin-x64`,
+  mac: `${RELEASE_BASE}/farol-runner-macos.dmg`,
   linux: `${RELEASE_BASE}/farol-runner-linux-x64`,
 };
 
@@ -252,15 +251,9 @@ export default function Dashboard() {
                     browser to authorize itself. No config files.
                   </p>
                   <div className="flex flex-wrap gap-2">
-                    <Button variant="outline" size="sm" asChild>
-                      <a href={RUNNER_DOWNLOADS.macArm} download>
-                        <Download className="h-4 w-4 mr-2" /> macOS (Apple
-                        Silicon)
-                      </a>
-                    </Button>
-                    <Button variant="outline" size="sm" asChild>
-                      <a href={RUNNER_DOWNLOADS.macIntel} download>
-                        <Download className="h-4 w-4 mr-2" /> macOS (Intel)
+                    <Button size="sm" asChild>
+                      <a href={RUNNER_DOWNLOADS.mac} download>
+                        <Download className="h-4 w-4 mr-2" /> Download for macOS
                       </a>
                     </Button>
                     <Button variant="outline" size="sm" asChild>
