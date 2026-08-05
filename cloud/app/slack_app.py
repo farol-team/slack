@@ -17,7 +17,7 @@ from slack_sdk.web.async_client import AsyncWebClient
 
 from . import protocol as p
 from .memory import OpenVikingClient
-from .task_router import Task, router
+from .chat_router import Turn, router
 
 log = logging.getLogger("slack_app")
 
@@ -135,8 +135,8 @@ class SlackRenderer:
             self._clients[team_id] = AsyncWebClient(token=token)
         return self._clients[team_id]
 
-    async def stream_chunk(self, task: Task, chunk: str) -> None:
-        key = str(task.task_id)
+    async def stream_chunk(self, turn: Turn, chunk: str) -> None:
+        key = str(turn.task_id)
         async with self._locks[key]:
             self._buffer[key].append(chunk)
             # Slack rate limit friendly: edit at most ~1x/sec.
@@ -144,31 +144,31 @@ class SlackRenderer:
                 return
             self._last_edit[key] = time.monotonic()
             text = "".join(self._buffer[key])
-            client = await self.client_for(task.slack_team)
+            client = await self.client_for(turn.slack_team)
             if key in self._stream_ts:
-                await client.chat_update(channel=task.slack_channel,
+                await client.chat_update(channel=turn.slack_channel,
                                          ts=self._stream_ts[key], text=text)
             else:
                 res = await client.chat_postMessage(
-                    channel=task.slack_channel, thread_ts=task.slack_thread_ts, text=text)
+                    channel=turn.slack_channel, thread_ts=turn.slack_thread_ts, text=text)
                 self._stream_ts[key] = res["ts"]
 
-    async def flush(self, task: Task) -> None:
+    async def flush(self, turn: Turn) -> None:
         """Force-final edit when the task finishes."""
-        key = str(task.task_id)
+        key = str(turn.task_id)
         async with self._locks[key]:
             if key in self._stream_ts and self._buffer[key]:
-                client = await self.client_for(task.slack_team)
-                await client.chat_update(channel=task.slack_channel,
+                client = await self.client_for(turn.slack_team)
+                await client.chat_update(channel=turn.slack_channel,
                                          ts=self._stream_ts[key],
                                          text="".join(self._buffer[key]))
 
-    async def post_status(self, task: Task, text: str) -> None:
-        client = await self.client_for(task.slack_team)
-        await client.chat_postMessage(channel=task.slack_channel,
-                                      thread_ts=task.slack_thread_ts, text=text)
+    async def post_status(self, turn: Turn, text: str) -> None:
+        client = await self.client_for(turn.slack_team)
+        await client.chat_postMessage(channel=turn.slack_channel,
+                                      thread_ts=turn.slack_thread_ts, text=text)
 
-    async def post_permission_request(self, task: Task, permission_id: Optional[str],
+    async def post_permission_request(self, turn: Turn, permission_id: Optional[str],
                                       description: str) -> Optional[str]:
         blocks = [
             {"type": "section", "text": {"type": "mrkdwn",
@@ -181,24 +181,24 @@ class SlackRenderer:
                  "style": "danger", "action_id": "perm_deny",
                  "value": permission_id or ""},
                 {"type": "button", "text": {"type": "plain_text", "text": "Stop task"},
-                 "action_id": "task_stop", "value": str(task.task_id)},
+                 "action_id": "task_stop", "value": str(turn.task_id)},
             ]},
         ]
-        client = await self.client_for(task.slack_team)
-        res = await client.chat_postMessage(channel=task.slack_channel,
-                                            thread_ts=task.slack_thread_ts,
+        client = await self.client_for(turn.slack_team)
+        res = await client.chat_postMessage(channel=turn.slack_channel,
+                                            thread_ts=turn.slack_thread_ts,
                                             text=f"Permission: {description}",
                                             blocks=blocks)
         return res.get("ts")
 
-    def cleanup(self, task: Task) -> None:
+    def cleanup(self, turn: Turn) -> None:
         """Drop per-turn streaming state once the turn is finished."""
-        key = str(task.task_id)
+        key = str(turn.task_id)
         for store in (self._stream_ts, self._buffer, self._last_edit, self._locks):
             store.pop(key, None)
 
-    async def post_result(self, task: Task, res: p.TaskResult) -> None:
-        await self.flush(task)
+    async def post_result(self, turn: Turn, res: p.TaskResult) -> None:
+        await self.flush(turn)
         emoji = {"done": ":white_check_mark:", "failed": ":x:", "cancelled": ":no_entry_sign:"}
         text = f"{emoji.get(res.status.value, ':question:')} Task {res.status.value}"
         if res.error:
@@ -209,9 +209,9 @@ class SlackRenderer:
                 "text": "Reply in this thread to continue the conversation."}]}
             if res.session_id else {"type": "context", "elements": []},
         ]
-        client = await self.client_for(task.slack_team)
-        await client.chat_postMessage(channel=task.slack_channel,
-                                      thread_ts=task.slack_thread_ts,
+        client = await self.client_for(turn.slack_team)
+        await client.chat_postMessage(channel=turn.slack_channel,
+                                      thread_ts=turn.slack_thread_ts,
                                       text=text, blocks=[b for b in blocks if b])
 
 

@@ -26,7 +26,7 @@ from .slack_app import (IngestionBuffer, SlackRenderer, create_bolt,
                         make_authorize, make_installation_resolver,
                         make_member_resolver, register_handlers)
 from .importer import ImportManager
-from .task_router import router
+from .chat_router import router
 
 logging.basicConfig(level=logging.INFO,
                     format="%(asctime)s %(name)s %(levelname)s %(message)s")
@@ -132,7 +132,7 @@ app.include_router(create_gateway_router(OPENVIKING_URL, OPENVIKING_ROOT_KEY,
 
 @app.get("/healthz")
 async def healthz():
-    return {"ok": True, "runners": len(router.runners), "tasks": len(router.tasks)}
+    return {"ok": True, "runners": len(router.runners), "turns": len(router.turns)}
 
 
 @app.post("/slack/events")

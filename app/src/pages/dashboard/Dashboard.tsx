@@ -219,11 +219,11 @@ export default function Dashboard() {
             </CardContent>
           </Card>
 
-          {overview && overview.recentTasks.length > 0 && (
+          {overview && overview.recentTurns.length > 0 && (
             <Card>
-              <CardHeader><CardTitle>Последние задачи</CardTitle></CardHeader>
+              <CardHeader><CardTitle>Recent turns</CardTitle></CardHeader>
               <CardContent className="space-y-2">
-                {overview.recentTasks.map((t) => (
+                {overview.recentTurns.map((t) => (
                   <div key={t.id} className="flex justify-between text-sm border-b last:border-0 pb-2">
                     <span className="truncate max-w-md">{t.prompt}</span>
                     <Badge variant={t.status === "done" ? "default" : "secondary"}>{t.status}</Badge>

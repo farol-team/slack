@@ -1,5 +1,5 @@
 {
-  "id": "4e39fe7f-8ec9-4bb5-9591-bc484311a603",
+  "id": "7b404c8a-8f09-42db-bb73-a9583ed32883",
   "prevId": "00000000-0000-0000-0000-000000000000",
   "version": "7",
   "dialect": "postgresql",
@@ -485,8 +485,8 @@
       "checkConstraints": {},
       "isRLSEnabled": false
     },
-    "public.tasks": {
-      "name": "tasks",
+    "public.turns": {
+      "name": "turns",
       "schema": "",
       "columns": {
         "id": {
@@ -495,8 +495,8 @@
           "primaryKey": true,
           "notNull": true
         },
-        "taskUuid": {
-          "name": "taskUuid",
+        "turnUuid": {
+          "name": "turnUuid",
           "type": "varchar(36)",
           "primaryKey": false,
           "notNull": true
@@ -527,7 +527,7 @@
         },
         "status": {
           "name": "status",
-          "type": "task_status",
+          "type": "turn_status",
           "typeSchema": "public",
           "primaryKey": false,
           "notNull": true,
@@ -555,9 +555,9 @@
       },
       "indexes": {},
       "foreignKeys": {
-        "tasks_chatId_chats_id_fk": {
-          "name": "tasks_chatId_chats_id_fk",
-          "tableFrom": "tasks",
+        "turns_chatId_chats_id_fk": {
+          "name": "turns_chatId_chats_id_fk",
+          "tableFrom": "turns",
           "tableTo": "chats",
           "columnsFrom": [
             "chatId"
@@ -568,9 +568,9 @@
           "onDelete": "no action",
           "onUpdate": "no action"
         },
-        "tasks_workspaceId_workspaces_id_fk": {
-          "name": "tasks_workspaceId_workspaces_id_fk",
-          "tableFrom": "tasks",
+        "turns_workspaceId_workspaces_id_fk": {
+          "name": "turns_workspaceId_workspaces_id_fk",
+          "tableFrom": "turns",
           "tableTo": "workspaces",
           "columnsFrom": [
             "workspaceId"
@@ -581,9 +581,9 @@
           "onDelete": "no action",
           "onUpdate": "no action"
         },
-        "tasks_runnerId_runners_id_fk": {
-          "name": "tasks_runnerId_runners_id_fk",
-          "tableFrom": "tasks",
+        "turns_runnerId_runners_id_fk": {
+          "name": "turns_runnerId_runners_id_fk",
+          "tableFrom": "turns",
           "tableTo": "runners",
           "columnsFrom": [
             "runnerId"
@@ -597,11 +597,11 @@
       },
       "compositePrimaryKeys": {},
       "uniqueConstraints": {
-        "tasks_taskUuid_unique": {
-          "name": "tasks_taskUuid_unique",
+        "turns_turnUuid_unique": {
+          "name": "turns_turnUuid_unique",
           "nullsNotDistinct": false,
           "columns": [
-            "taskUuid"
+            "turnUuid"
           ]
         }
       },
@@ -880,8 +880,8 @@
         "member"
       ]
     },
-    "public.task_status": {
-      "name": "task_status",
+    "public.turn_status": {
+      "name": "turn_status",
       "schema": "public",
       "values": [
         "running",

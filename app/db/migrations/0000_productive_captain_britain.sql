@@ -1,6 +1,6 @@
 CREATE TYPE "public"."chat_status" AS ENUM('idle', 'running');--> statement-breakpoint
 CREATE TYPE "public"."member_role" AS ENUM('owner', 'admin', 'member');--> statement-breakpoint
-CREATE TYPE "public"."task_status" AS ENUM('running', 'done', 'failed', 'cancelled', 'orphaned');--> statement-breakpoint
+CREATE TYPE "public"."turn_status" AS ENUM('running', 'done', 'failed', 'cancelled', 'orphaned');--> statement-breakpoint
 CREATE TYPE "public"."user_role" AS ENUM('user', 'admin');--> statement-breakpoint
 CREATE TYPE "public"."workspace_plan" AS ENUM('free', 'team', 'enterprise');--> statement-breakpoint
 CREATE TABLE "channels" (
@@ -64,18 +64,18 @@ CREATE TABLE "slack_oauth_states" (
 	CONSTRAINT "slack_oauth_states_state_unique" UNIQUE("state")
 );
 --> statement-breakpoint
-CREATE TABLE "tasks" (
+CREATE TABLE "turns" (
 	"id" serial PRIMARY KEY NOT NULL,
-	"taskUuid" varchar(36) NOT NULL,
+	"turnUuid" varchar(36) NOT NULL,
 	"chatId" integer NOT NULL,
 	"workspaceId" integer NOT NULL,
 	"runnerId" integer,
 	"prompt" text NOT NULL,
-	"status" "task_status" DEFAULT 'running' NOT NULL,
+	"status" "turn_status" DEFAULT 'running' NOT NULL,
 	"error" text,
 	"createdAt" timestamp DEFAULT now() NOT NULL,
 	"finishedAt" timestamp,
-	CONSTRAINT "tasks_taskUuid_unique" UNIQUE("taskUuid")
+	CONSTRAINT "turns_turnUuid_unique" UNIQUE("turnUuid")
 );
 --> statement-breakpoint
 CREATE TABLE "users" (
@@ -122,9 +122,9 @@ ALTER TABLE "slack_installations" ADD CONSTRAINT "slack_installations_workspaceI
 ALTER TABLE "slack_installations" ADD CONSTRAINT "slack_installations_installedByUserId_users_id_fk" FOREIGN KEY ("installedByUserId") REFERENCES "public"."users"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "slack_oauth_states" ADD CONSTRAINT "slack_oauth_states_workspaceId_workspaces_id_fk" FOREIGN KEY ("workspaceId") REFERENCES "public"."workspaces"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "slack_oauth_states" ADD CONSTRAINT "slack_oauth_states_userId_users_id_fk" FOREIGN KEY ("userId") REFERENCES "public"."users"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
-ALTER TABLE "tasks" ADD CONSTRAINT "tasks_chatId_chats_id_fk" FOREIGN KEY ("chatId") REFERENCES "public"."chats"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
-ALTER TABLE "tasks" ADD CONSTRAINT "tasks_workspaceId_workspaces_id_fk" FOREIGN KEY ("workspaceId") REFERENCES "public"."workspaces"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
-ALTER TABLE "tasks" ADD CONSTRAINT "tasks_runnerId_runners_id_fk" FOREIGN KEY ("runnerId") REFERENCES "public"."runners"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "turns" ADD CONSTRAINT "turns_chatId_chats_id_fk" FOREIGN KEY ("chatId") REFERENCES "public"."chats"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "turns" ADD CONSTRAINT "turns_workspaceId_workspaces_id_fk" FOREIGN KEY ("workspaceId") REFERENCES "public"."workspaces"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "turns" ADD CONSTRAINT "turns_runnerId_runners_id_fk" FOREIGN KEY ("runnerId") REFERENCES "public"."runners"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "workspace_members" ADD CONSTRAINT "workspace_members_workspaceId_workspaces_id_fk" FOREIGN KEY ("workspaceId") REFERENCES "public"."workspaces"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "workspace_members" ADD CONSTRAINT "workspace_members_userId_users_id_fk" FOREIGN KEY ("userId") REFERENCES "public"."users"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "workspaces" ADD CONSTRAINT "workspaces_ownerUserId_users_id_fk" FOREIGN KEY ("ownerUserId") REFERENCES "public"."users"("id") ON DELETE no action ON UPDATE no action;

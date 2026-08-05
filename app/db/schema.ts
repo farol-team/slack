@@ -14,7 +14,7 @@ export const userRole = pgEnum("user_role", ["user", "admin"]);
 export const workspacePlan = pgEnum("workspace_plan", ["free", "team", "enterprise"]);
 export const memberRole = pgEnum("member_role", ["owner", "admin", "member"]);
 export const chatStatus = pgEnum("chat_status", ["idle", "running"]);
-export const taskStatus = pgEnum("task_status", [
+export const turnStatus = pgEnum("turn_status", [
   "running",
   "done",
   "failed",
@@ -128,11 +128,11 @@ export const chats = pgTable("chats", {
 });
 export type Chat = typeof chats.$inferSelect;
 
-/** One turn of a chat: prompt -> result. */
-export const tasks = pgTable("tasks", {
+/** One turn of a chat: prompt -> result (wire protocol: one task). */
+export const turns = pgTable("turns", {
   id: serial("id").primaryKey(),
   /** Cloud-side task id (UUID). */
-  taskUuid: varchar("taskUuid", { length: 36 }).notNull().unique(),
+  turnUuid: varchar("turnUuid", { length: 36 }).notNull().unique(),
   chatId: integer("chatId")
     .notNull()
     .references(() => chats.id),
@@ -141,12 +141,12 @@ export const tasks = pgTable("tasks", {
     .references(() => workspaces.id),
   runnerId: integer("runnerId").references(() => runners.id),
   prompt: text("prompt").notNull(),
-  status: taskStatus("status").default("running").notNull(),
+  status: turnStatus("status").default("running").notNull(),
   error: text("error"),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
   finishedAt: timestamp("finishedAt"),
 });
-export type Task = typeof tasks.$inferSelect;
+export type Turn = typeof turns.$inferSelect;
 
 export const slackInstallations = pgTable("slack_installations", {
   id: serial("id").primaryKey(),

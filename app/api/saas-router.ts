@@ -4,7 +4,7 @@ import {
   channels,
   chats,
   runners,
-  tasks,
+  turns,
   workspaceMembers,
   workspaces,
 } from "@db/schema";
@@ -97,13 +97,13 @@ export const workspaceRouter = createRouter({
         .select()
         .from(channels)
         .where(eq(channels.workspaceId, ws.id));
-      const recentTasks = await db
+      const recentTurns = await db
         .select()
-        .from(tasks)
-        .where(eq(tasks.workspaceId, ws.id))
-        .orderBy(desc(tasks.createdAt))
+        .from(turns)
+        .where(eq(turns.workspaceId, ws.id))
+        .orderBy(desc(turns.createdAt))
         .limit(10);
-      return { workspace: ws, runners: runnerList, channels: channelList, recentTasks };
+      return { workspace: ws, runners: runnerList, channels: channelList, recentTurns };
     }),
 });
 
@@ -272,7 +272,7 @@ export const chatSyncRouter = createRouter({
     .input(
       z.object({
         chatUuid: z.string(),
-        taskUuid: z.string(),
+        turnUuid: z.string(),
         status: z.enum(["running", "done", "failed", "cancelled", "orphaned"]),
         prompt: z.string().optional(),
         runnerId: z.number().optional(),
@@ -290,8 +290,8 @@ export const chatSyncRouter = createRouter({
         .limit(1);
       if (!chat) throw new TRPCError({ code: "NOT_FOUND", message: "chat" });
       if (input.status === "running") {
-        await db.insert(tasks).values({
-          taskUuid: input.taskUuid,
+        await db.insert(turns).values({
+          turnUuid: input.turnUuid,
           chatId: chat.id,
           workspaceId: chat.workspaceId,
           runnerId: input.runnerId || null,
@@ -300,13 +300,13 @@ export const chatSyncRouter = createRouter({
         await db.update(chats).set({ status: "running" }).where(eq(chats.id, chat.id));
       } else {
         await db
-          .update(tasks)
+          .update(turns)
           .set({
             status: input.status,
             error: input.error ?? null,
             finishedAt: new Date(),
           })
-          .where(eq(tasks.taskUuid, input.taskUuid));
+          .where(eq(turns.turnUuid, input.turnUuid));
         await db
           .update(chats)
           .set({
