@@ -1,0 +1,70 @@
+# Builds the headless Farol Runner for macOS (arm64 + x64) and Linux
+# and publishes the binaries to a GitHub Release on runner-v* tags.
+# The desktop (Tauri) app is not part of this pipeline yet.
+name: runner-release
+
+on:
+  push:
+    tags: ["runner-v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: macos-14
+            target: aarch64-apple-darwin
+            asset: farol-runner-darwin-arm64
+          - os: macos-13
+            target: x86_64-apple-darwin
+            asset: farol-runner-darwin-x64
+          - os: ubuntu-22.04
+            target: x86_64-unknown-linux-gnu
+            asset: farol-runner-linux-x64
+    runs-on: ${{ matrix.os }}
+    defaults:
+      run:
+        working-directory: runner
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: runner
+      - name: Build
+        run: cargo build --release -p farol-core --example headless --target ${{ matrix.target }}
+      - name: Stage asset
+        run: cp target/${{ matrix.target }}/release/examples/headless ${{ matrix.asset }}
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.asset }}
+          path: runner/${{ matrix.asset }}
+          if-no-files-found: error
+
+  release:
+    needs: build
+    runs-on: ubuntu-latest
+    if: startsWith(github.ref, 'refs/tags/')
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          merge-multiple: true
+          path: dist
+      - uses: softprops/action-gh-release@v2
+        with:
+          name: Farol Runner ${{ github.ref_name }}
+          files: dist/*
+          body: |
+            Headless Farol Runner. Download the binary for your platform,
+            `chmod +x` it and run — it opens the browser to authorize itself.
+
+            macOS note: the binary is unsigned for now; clear the quarantine
+            flag before the first run:
+            `xattr -d com.apple.quarantine ./farol-runner-darwin-*`
