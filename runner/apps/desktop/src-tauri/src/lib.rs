@@ -64,7 +64,7 @@ async fn save_runner_token(app: AppHandle, token: String) -> Result<(), String> 
         }
     }
     // (Re)start the cloud connection with the new token.
-    start_cloud(app).await;
+    start_cloud(app, Some(token)).await;
     Ok(())
 }
 
@@ -111,8 +111,12 @@ async fn authorize_in_browser(app: AppHandle) -> Result<(), String> {
                 workspace_id,
             }) => {
                 if let Err(e) = RunnerConfig::set_token(&token) {
-                    let _ = app2.emit("cloud-error", format!("keychain write failed: {e}"));
-                    return;
+                    // Not fatal: the connection below uses the token we hold.
+                    tracing::error!("connect: keychain write failed: {e}");
+                    let _ = app2.emit(
+                        "cloud-error",
+                        format!("Connected, but saving the token failed: {e}"),
+                    );
                 }
                 match RunnerConfig::load() {
                     Ok(mut cfg) => {
@@ -123,7 +127,7 @@ async fn authorize_in_browser(app: AppHandle) -> Result<(), String> {
                     }
                     Err(e) => tracing::error!("connect: config reload failed: {e}"),
                 }
-                start_cloud(app2.clone()).await;
+                start_cloud(app2.clone(), Some(token)).await;
                 let _ = app2.emit("status-changed", ());
             }
             Ok(PollOutcome::Expired) => {
@@ -269,10 +273,10 @@ async fn restart_cloud(app: &AppHandle) {
     if let Some(sm) = state.session_manager.write().await.take() {
         sm.shutdown().await;
     }
-    start_cloud(app.clone()).await;
+    start_cloud(app.clone(), None).await;
 }
 
-async fn start_cloud(app: AppHandle) {
+async fn start_cloud(app: AppHandle, token: Option<String>) {
     let cfg = match RunnerConfig::load() {
         Ok(c) => c,
         Err(e) => {
@@ -281,18 +285,26 @@ async fn start_cloud(app: AppHandle) {
         }
     };
     tracing::info!("start_cloud: cloud_url={}", cfg.cloud_url);
-    // Workaround: keyring 3.6 на macOS теряет запись сразу после write —
-    // в dev можно задать токен через FAROL_RUNNER_TOKEN.
-    let token = match std::env::var("FAROL_RUNNER_TOKEN").ok()
+    // A token handed in by the flow that just obtained it wins: keyring 3.6 on
+    // macOS can lose a write straight after it, and a silent early return here
+    // is exactly what "I pressed connect and nothing happened" looks like.
+    let token = match token
+        .or_else(|| std::env::var("FAROL_RUNNER_TOKEN").ok())
         .or_else(|| RunnerConfig::token().ok().flatten())
     {
         Some(t) => t,
         None => {
-            tracing::error!("start_cloud: токен не найден (env и keychain пусты) — ранний выход");
+            tracing::error!("start_cloud: no token (keychain and env are empty)");
+            let _ = app.emit(
+                "cloud-error",
+                "Authorized, but the token could not be read back from the keychain \
+                 — paste it under Advanced instead".to_string(),
+            );
+            let _ = app.emit("status-changed", ());
             return;
         }
     };
-    tracing::info!("start_cloud: token прочитан, len={}", token.len());
+    tracing::info!("start_cloud: token len={}", token.len());
 
     // Announce only adapters that are actually on this machine: the cloud
     // routes a turn to a name from this list, and a name that is not here
@@ -356,7 +368,6 @@ async fn handle_cloud_message(app: AppHandle, msg: CloudMessage) {
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
-    tracing_subscriber::fmt::init();
 
     tauri::Builder::default()
         .plugin(tauri_plugin_autostart::Builder::new().build())
@@ -377,6 +388,23 @@ pub fn run() {
             install_agent
         ])
         .setup(|app| {
+            // A bundled .app has nowhere to print: without a log on disk,
+            // "I pressed connect and nothing happened" cannot be diagnosed.
+            if let Ok(dir) = app.path().app_log_dir() {
+                let _ = std::fs::create_dir_all(&dir);
+                if let Ok(file) = std::fs::OpenOptions::new()
+                    .create(true)
+                    .append(true)
+                    .open(dir.join("farol-runner.log"))
+                {
+                    let _ = tracing_subscriber::fmt()
+                        .with_ansi(false)
+                        .with_writer(move || file.try_clone().expect("log handle"))
+                        .try_init();
+                    tracing::info!("log file: {}", dir.join("farol-runner.log").display());
+                }
+            }
+
             // Tray: Show / Quit
             let show = MenuItem::with_id(app, "show", "Open Farol Runner", true, None::<&str>)?;
             let quit = MenuItem::with_id(app, "quit", "Quit", true, None::<&str>)?;
@@ -398,7 +426,7 @@ pub fn run() {
 
             // Auto-connect if credentials exist.
             let handle = app.handle().clone();
-            tauri::async_runtime::spawn(async move { start_cloud(handle).await });
+            tauri::async_runtime::spawn(async move { start_cloud(handle, None).await });
             Ok(())
         })
         .run(tauri::generate_context!())
