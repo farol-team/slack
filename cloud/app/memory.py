@@ -102,9 +102,10 @@ class OpenVikingClient:
     # ---------- retrieval (dashboard / debugging) ----------
 
     async def status(self) -> bool:
-        """True when the OV server answers its status endpoint."""
+        """True when the OV server answers its health endpoint
+        (`/health`, verified against OpenViking v0.4.12)."""
         try:
-            res = await self._client.get("/api/v1/status")
+            res = await self._client.get("/health")
             return res.is_success
         except httpx.HTTPError:
             return False
