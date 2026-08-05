@@ -124,7 +124,7 @@ class SlackRenderer:
     def __init__(self, token_resolver):
         self._resolve = token_resolver        # async (team_id) -> bot_token
         self._clients: dict[str, AsyncWebClient] = {}
-        self._stream_ts: dict[str, str] = {}       # task_id -> message ts
+        self._stream_ts: dict[str, str] = {}       # turn_id -> message ts
         self._buffer: dict[str, list[str]] = defaultdict(list)
         self._last_edit: dict[str, float] = defaultdict(float)
         self._locks: dict[str, asyncio.Lock] = defaultdict(asyncio.Lock)
@@ -197,7 +197,7 @@ class SlackRenderer:
         for store in (self._stream_ts, self._buffer, self._last_edit, self._locks):
             store.pop(key, None)
 
-    async def post_result(self, turn: Turn, res: p.TaskResult) -> None:
+    async def post_result(self, turn: Turn, res: p.TurnResult) -> None:
         await self.flush(turn)
         emoji = {"done": ":white_check_mark:", "failed": ":x:", "cancelled": ":no_entry_sign:"}
         text = f"{emoji.get(res.status.value, ':question:')} Task {res.status.value}"

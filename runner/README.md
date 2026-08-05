@@ -29,7 +29,7 @@ Principles:
 - **Zero open ports**: the client always initiates the connection itself (`cloud.rs`).
 - **Agent as a subprocess**: JSON-RPC 2.0 over stdio (`acp.rs`), not tied to any
   specific agent — any ACP-compatible one works (Claude Code, Gemini CLI, Codex, Kimi CLI…).
-- **Memory from the cloud**: `AssignTask.memory` contains the OpenViking MCP endpoint;
+- **Memory from the cloud**: `AssignTurn.memory` contains the OpenViking MCP endpoint;
   the client passes it to the agent on `session/new` — the agent gets the team's memory.
 - **Security**: `allowed_cwds` is a hard allowlist of directories; the token lives in
   the OS keychain, not in a file; destructive actions are confirmed via buttons in Slack
@@ -83,11 +83,11 @@ config is the standard `RunnerConfig::load()`.
 | Message | Direction | Purpose |
 |---|---|---|
 | `hello` | → | auth (token), versions, list of agents |
-| `assign_task` | ← | Slack mention: prompt, thread, cwd, agent, memory config |
-| `task_event` | → | stream: chunk / tool_call / plan / permission_request |
+| `assign_turn` | ← | Slack mention: prompt, thread, cwd, agent, memory config |
+| `turn_event` | → | stream: chunk / tool_call / plan / permission_request |
 | `permission_decision` | ← | Approve/Deny from a Slack button |
-| `cancel_task` | ← | Stop |
-| `task_result` | → | final status + session_id (for resume) |
+| `cancel_turn` | ← | Stop |
+| `turn_result` | → | final status + session_id (for resume) |
 
 ## What's next (production)
 

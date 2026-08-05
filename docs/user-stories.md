@@ -119,7 +119,7 @@ channel-level mapping is ours to build.*
 **D3. Agent reads memory via MCP** — ❌ (P0)
 As a user, my agent transparently gets a "team-memory" MCP server with **my** key when a
 task starts, and can search/read what I can read.
-*Gap: `AssignTask.memory` plumbing exists end-to-end, but no public MCP endpoint is
+*Gap: `AssignTurn.memory` plumbing exists end-to-end, but no public MCP endpoint is
 deployed (`MEMORY_MCP_URL` points at nothing); OV sits inside the docker network. Needs
 an MCP proxy in cloud that enforces the user key.*
 

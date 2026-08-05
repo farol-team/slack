@@ -9,25 +9,27 @@ The exchange protocol mirrors `runner/crates/farol-core/src/protocol.rs`.
 ```
 app/
 ├── protocol.py      # pydantic models, 1-to-1 with the Rust serde (tagged union, snake_case)
-├── task_router.py   # runner registry, task lifecycle, thread ↔ task ↔ session
-├── slack_app.py     # Slack Bolt: mentions, Approve/Deny/Stop buttons, ingestion buffer
-├── memory.py        # OpenViking HTTP client (accounts/users, resources, sessions)
-└── main.py          # FastAPI: /runner/v1 (WS), /slack/events, /healthz
+├── chat_router.py   # ChatRouter: chats (thread = conversation), turns, runner registry
+├── slack_app.py     # Slack Bolt: mentions, follow-up turns, buttons, ingestion buffer
+├── gateway.py       # /memory/mcp — channel-scoped proxy of OpenViking MCP
+├── memory.py        # OpenViking HTTP client (trusted mode)
+└── main.py          # FastAPI: /runner/v1 (WS), /slack/events, /memory/mcp, /healthz
 ```
 
 ## Data flows
 
-**Task from Slack → local agent:**
+**Turn from Slack → local agent:**
 ```
-@app_mention in a thread
-  → TaskRouter.assign() → AssignTask (WS) → runner
+@app_mention in a thread (opens a Chat; replies are follow-up turns)
+  → ChatRouter.start_turn() → AssignTurn (WS) → the author's own runner (BYOA)
   → runner spawns `agent --acp` (cwd checked against the allowlist on the client)
-  → TaskEvents stream back:
+  → TurnEvents stream back:
       agent_message_chunk → chat_update of a single message (≤1 edit/sec, rate-limit safe)
       tool_call / plan    → status replies in the thread
       permission_request  → Block Kit Approve / Deny / Stop buttons
-  → buttons → PermissionDecision / CancelTask (WS) → runner → agent
-  → TaskResult → final status + Resume button (session_id is stored)
+  → buttons → PermissionDecision / CancelTurn (WS) → runner → agent
+  → TurnResult → final status; the ACP session folds into the Chat, a plain
+    reply by the owner resumes it
 ```
 
 **Memory (channel-scoped, via the gateway):**
@@ -38,7 +40,7 @@ app/
   `X-OpenViking-Account` / `X-OpenViking-User` headers (root key authorizes us as the
   identity-injecting upstream). Configure `ov.conf` with `auth_mode: "trusted"` and
   `root_api_key` = `OPENVIKING_ROOT_KEY`.
-- Agents never see OpenViking directly. `AssignTask.memory` carries our
+- Agents never see OpenViking directly. `AssignTurn.memory` carries our
   **memory gateway** (`/memory/mcp`, see `app/gateway.py`) plus a signed task token
   scoped to the mention's channel: the gateway proxies native OpenViking MCP tools
   and rejects any call whose target URI leaves `viking://resources/slack/{channel}/`.

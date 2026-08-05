@@ -5,7 +5,7 @@ use crate::acp::{AcpClient, AcpEvent};
 use crate::cloud::CloudSender;
 use crate::config::RunnerConfig;
 use crate::protocol::{
-    AssignTask, CloudMessage, TaskEvent, TaskEventKind, TaskResult, TaskStatus,
+    AssignTurn, CloudMessage, TurnEvent, TurnEventKind, TurnResult, TurnStatus,
 };
 use serde_json::json;
 use std::collections::HashMap;
@@ -37,13 +37,13 @@ impl SessionManager {
         }
     }
 
-    /// Entry point for CloudMessage::AssignTask.
-    pub async fn handle_assign(&self, task: AssignTask) {
+    /// Entry point for CloudMessage::AssignTurn.
+    pub async fn handle_assign(&self, task: AssignTurn) {
         // Security gate: never run outside allowlisted directories.
         let cwd = PathBuf::from(&task.cwd);
         if !self.config.is_cwd_allowed(&cwd) {
             error!("rejected cwd outside allowlist: {cwd:?}");
-            self.finish(task.task_id, TaskStatus::Failed, None,
+            self.finish(task.turn_id, TurnStatus::Failed, None,
                         Some("cwd not allowed by local policy".into()));
             return;
         }
@@ -53,7 +53,7 @@ impl SessionManager {
         {
             Some(a) => a.clone(),
             None => {
-                self.finish(task.task_id, TaskStatus::Failed, None, Some("no agents configured".into()));
+                self.finish(task.turn_id, TurnStatus::Failed, None, Some("no agents configured".into()));
                 return;
             }
         };
@@ -67,13 +67,13 @@ impl SessionManager {
         let client = match AcpClient::spawn(&agent.command, &agent.args, &cwd, &env, ev_tx).await {
             Ok(c) => c,
             Err(e) => {
-                self.finish(task.task_id, TaskStatus::Failed, None, Some(format!("spawn: {e}")));
+                self.finish(task.turn_id, TurnStatus::Failed, None, Some(format!("spawn: {e}")));
                 return;
             }
         };
 
         if let Err(e) = client.initialize().await {
-            self.finish(task.task_id, TaskStatus::Failed, None, Some(format!("initialize: {e}")));
+            self.finish(task.turn_id, TurnStatus::Failed, None, Some(format!("initialize: {e}")));
             return;
         }
 
@@ -102,32 +102,32 @@ impl SessionManager {
             session_id: session_id.clone(),
             pending_permissions: HashMap::new(),
         }));
-        self.tasks.lock().await.insert(task.task_id, running.clone());
+        self.tasks.lock().await.insert(task.turn_id, running.clone());
 
         // Forward ACP events to the cloud (cloud renders them into Slack).
         let cloud = self.cloud.clone();
-        let task_id = task.task_id;
+        let turn_id = task.turn_id;
         tokio::spawn(async move {
             while let Some(ev) = ev_rx.recv().await {
                 let (kind, text, permission_id) = match ev {
-                    AcpEvent::MessageChunk(t) => (TaskEventKind::AgentMessageChunk, t, None),
-                    AcpEvent::ToolCall { title } => (TaskEventKind::ToolCall, title, None),
-                    AcpEvent::ToolCallUpdate { title } => (TaskEventKind::ToolCallUpdate, title, None),
-                    AcpEvent::Plan(t) => (TaskEventKind::Plan, t, None),
+                    AcpEvent::MessageChunk(t) => (TurnEventKind::AgentMessageChunk, t, None),
+                    AcpEvent::ToolCall { title } => (TurnEventKind::ToolCall, title, None),
+                    AcpEvent::ToolCallUpdate { title } => (TurnEventKind::ToolCallUpdate, title, None),
+                    AcpEvent::Plan(t) => (TurnEventKind::Plan, t, None),
                     AcpEvent::PermissionRequest { request_id, description, allow_id, reject_id } => {
                         let pid = request_id.to_string();
                         running.lock().await
                             .pending_permissions.insert(pid.clone(), (request_id, allow_id, reject_id));
-                        (TaskEventKind::PermissionRequest, description, Some(pid))
+                        (TurnEventKind::PermissionRequest, description, Some(pid))
                     }
                 };
-                cloud.send(&CloudMessage::TaskEvent(TaskEvent {
-                    task_id, kind, text, permission_id,
+                cloud.send(&CloudMessage::TurnEvent(TurnEvent {
+                    turn_id, kind, text, permission_id,
                 }));
             }
         });
 
-        info!("task {} started, session {:?}", task.task_id, session_id);
+        info!("task {} started, session {:?}", task.turn_id, session_id);
         let sid = session_id.clone().unwrap_or_default();
         // prompt ждёт финальный ответ агента — потенциально минуты.
         // Мьютекса на клиенте нет: respond_permission/cancel пишут в stdin
@@ -136,22 +136,22 @@ impl SessionManager {
 
         // If the entry is gone, the task was cancelled: the agent process
         // is already dead and the Cancelled result already sent.
-        let Some(entry) = self.tasks.lock().await.remove(&task.task_id) else {
+        let Some(entry) = self.tasks.lock().await.remove(&task.turn_id) else {
             return;
         };
         // One task = one process: reap the agent, the session lives on
         // disk and can be resumed by a fresh process via session/load.
         entry.lock().await.client.shutdown().await;
         match result {
-            Ok(()) => self.finish(task.task_id, TaskStatus::Done, session_id, None),
-            Err(e) => self.finish(task.task_id, TaskStatus::Failed, session_id, Some(e.to_string())),
+            Ok(()) => self.finish(task.turn_id, TurnStatus::Done, session_id, None),
+            Err(e) => self.finish(task.turn_id, TurnStatus::Failed, session_id, Some(e.to_string())),
         }
     }
 
     /// Slack pressed Approve/Deny — relay into the agent.
-    pub async fn handle_permission(&self, task_id: Uuid, permission_id: String, approved: bool) {
+    pub async fn handle_permission(&self, turn_id: Uuid, permission_id: String, approved: bool) {
         let tasks = self.tasks.lock().await;
-        if let Some(task) = tasks.get(&task_id) {
+        if let Some(task) = tasks.get(&turn_id) {
             let mut t = task.lock().await;
             if let Some((request_id, allow_id, reject_id)) = t.pending_permissions.remove(&permission_id) {
                 let option_id = if approved { allow_id } else { reject_id };
@@ -162,8 +162,8 @@ impl SessionManager {
 
     /// Slack pressed Stop: cancel the session, then kill the agent
     /// process — Stop must actually stop work on the machine.
-    pub async fn handle_cancel(&self, task_id: Uuid) {
-        let entry = self.tasks.lock().await.remove(&task_id);
+    pub async fn handle_cancel(&self, turn_id: Uuid) {
+        let entry = self.tasks.lock().await.remove(&turn_id);
         let Some(task) = entry else { return };
         let (session_id, client) = {
             let t = task.lock().await;
@@ -173,12 +173,12 @@ impl SessionManager {
             let _ = client.cancel(sid).await;
         }
         client.shutdown().await;
-        self.finish(task_id, TaskStatus::Cancelled, session_id, None);
+        self.finish(turn_id, TurnStatus::Cancelled, session_id, None);
     }
 
-    fn finish(&self, task_id: Uuid, status: TaskStatus, session_id: Option<String>, error: Option<String>) {
-        self.cloud.send(&CloudMessage::TaskResult(TaskResult {
-            task_id, status, session_id, error,
+    fn finish(&self, turn_id: Uuid, status: TurnStatus, session_id: Option<String>, error: Option<String>) {
+        self.cloud.send(&CloudMessage::TurnResult(TurnResult {
+            turn_id, status, session_id, error,
         }));
     }
 

@@ -21,7 +21,7 @@ class MemoryConfig(BaseModel):
     user_key: str
 
 
-class TaskEventKind(str, Enum):
+class TurnEventKind(str, Enum):
     agent_message_chunk = "agent_message_chunk"
     tool_call = "tool_call"
     tool_call_update = "tool_call_update"
@@ -30,7 +30,7 @@ class TaskEventKind(str, Enum):
     error = "error"
 
 
-class TaskStatus(str, Enum):
+class TurnStatus(str, Enum):
     done = "done"
     failed = "failed"
     cancelled = "cancelled"
@@ -50,27 +50,27 @@ class Ping(BaseModel):
     type: Literal["ping"] = "ping"
 
 
-class TaskEvent(BaseModel):
-    type: Literal["task_event"] = "task_event"
-    task_id: UUID
-    kind: TaskEventKind
+class TurnEvent(BaseModel):
+    type: Literal["turn_event"] = "turn_event"
+    turn_id: UUID
+    kind: TurnEventKind
     text: str
     permission_id: Optional[str] = None
 
 
-class TaskResult(BaseModel):
-    type: Literal["task_result"] = "task_result"
-    task_id: UUID
-    status: TaskStatus
+class TurnResult(BaseModel):
+    type: Literal["turn_result"] = "turn_result"
+    turn_id: UUID
+    status: TurnStatus
     session_id: Optional[str] = None
     error: Optional[str] = None
 
 
 # ---------- cloud -> runner ----------
 
-class AssignTask(BaseModel):
-    type: Literal["assign_task"] = "assign_task"
-    task_id: UUID
+class AssignTurn(BaseModel):
+    type: Literal["assign_turn"] = "assign_turn"
+    turn_id: UUID
     slack_channel: str
     slack_thread_ts: str
     prompt: str
@@ -82,14 +82,14 @@ class AssignTask(BaseModel):
 
 class PermissionDecision(BaseModel):
     type: Literal["permission_decision"] = "permission_decision"
-    task_id: UUID
+    turn_id: UUID
     permission_id: str
     approved: bool
 
 
-class CancelTask(BaseModel):
-    type: Literal["cancel_task"] = "cancel_task"
-    task_id: UUID
+class CancelTurn(BaseModel):
+    type: Literal["cancel_turn"] = "cancel_turn"
+    turn_id: UUID
 
 
 class Pong(BaseModel):
@@ -104,8 +104,8 @@ class Error(BaseModel):
 
 # ---------- envelope union ----------
 
-RunnerMessage = Union[Hello, Ping, TaskEvent, TaskResult]
-CloudMessage = Union[AssignTask, PermissionDecision, CancelTask, Pong, Error]
+RunnerMessage = Union[Hello, Ping, TurnEvent, TurnResult]
+CloudMessage = Union[AssignTurn, PermissionDecision, CancelTurn, Pong, Error]
 
 
 def parse_runner_message(raw: dict) -> RunnerMessage:
@@ -114,8 +114,8 @@ def parse_runner_message(raw: dict) -> RunnerMessage:
     models = {
         "hello": Hello,
         "ping": Ping,
-        "task_event": TaskEvent,
-        "task_result": TaskResult,
+        "turn_event": TurnEvent,
+        "turn_result": TurnResult,
     }
     model = models.get(tag)
     if model is None:

@@ -223,10 +223,10 @@ async def runner_ws(ws: WebSocket):
             if isinstance(msg, p.Ping):
                 await ws.send_text(p.encode(p.Pong()))
                 await touch_runner(runner)
-            elif isinstance(msg, p.TaskEvent):
-                await router.on_task_event(msg, renderer)
-            elif isinstance(msg, p.TaskResult):
-                await router.on_task_result(msg, renderer)
+            elif isinstance(msg, p.TurnEvent):
+                await router.on_turn_event(msg, renderer)
+            elif isinstance(msg, p.TurnResult):
+                await router.on_turn_result(msg, renderer)
     except WebSocketDisconnect:
         pass
     finally:

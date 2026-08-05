@@ -15,19 +15,19 @@ pub enum CloudMessage {
     Hello(Hello),
     /// Heartbeat, every ~30s.
     Ping,
-    /// Streaming chunk of the agent's answer for a task (mapped to a Slack thread).
-    TaskEvent(TaskEvent),
-    /// Terminal state of a task.
-    TaskResult(TaskResult),
+    /// Streaming chunk of the agent's answer for a turn (mapped to a Slack thread).
+    TurnEvent(TurnEvent),
+    /// Terminal state of a turn.
+    TurnResult(TurnResult),
     /// User decision on a permission request (relayed FROM Slack via cloud),
     /// answered back to the ACP agent.
     // ---- cloud -> runner ----
-    /// New task created by a Slack mention / DM.
-    AssignTask(AssignTask),
+    /// New turn created by a Slack mention / DM.
+    AssignTurn(AssignTurn),
     /// Slack user pressed Approve/Deny — resolves a pending permission.
     PermissionDecision(PermissionDecision),
-    /// Cancel a running task (Stop button / ❌ reaction).
-    CancelTask { task_id: Uuid },
+    /// Cancel a running turn (Stop button / ❌ reaction).
+    CancelTurn { turn_id: Uuid },
     Pong,
     /// Fatal: auth rejected, runner should stop and re-login.
     Error { code: String, message: String },
@@ -43,9 +43,9 @@ pub struct Hello {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct AssignTask {
-    pub task_id: Uuid,
-    /// Slack thread this task is bound to (cloud owns the mapping).
+pub struct AssignTurn {
+    pub turn_id: Uuid,
+    /// Slack thread this turn is bound to (cloud owns the mapping).
     pub slack_channel: String,
     pub slack_thread_ts: String,
     /// Prompt text from the Slack user.
@@ -68,9 +68,9 @@ pub struct MemoryConfig {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct TaskEvent {
-    pub task_id: Uuid,
-    pub kind: TaskEventKind,
+pub struct TurnEvent {
+    pub turn_id: Uuid,
+    pub kind: TurnEventKind,
     /// Text chunk / tool name / permission description.
     pub text: String,
     /// For permission events: cloud renders Approve/Deny buttons with this id.
@@ -80,7 +80,7 @@ pub struct TaskEvent {
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
-pub enum TaskEventKind {
+pub enum TurnEventKind {
     AgentMessageChunk,
     ToolCall,
     ToolCallUpdate,
@@ -90,9 +90,9 @@ pub enum TaskEventKind {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct TaskResult {
-    pub task_id: Uuid,
-    pub status: TaskStatus,
+pub struct TurnResult {
+    pub turn_id: Uuid,
+    pub status: TurnStatus,
     /// ACP session id — cloud stores it to offer "resume" later.
     pub session_id: Option<String>,
     #[serde(default)]
@@ -101,7 +101,7 @@ pub struct TaskResult {
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
-pub enum TaskStatus {
+pub enum TurnStatus {
     Done,
     Failed,
     Cancelled,
@@ -109,7 +109,7 @@ pub enum TaskStatus {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PermissionDecision {
-    pub task_id: Uuid,
+    pub turn_id: Uuid,
     pub permission_id: String,
     pub approved: bool,
 }

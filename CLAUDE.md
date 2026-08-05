@@ -20,11 +20,11 @@ Slack ──Events API──► cloud (Python/FastAPI) ──wss──► runner
 - **`cloud/`** — data plane: receives Slack Events (Slack Bolt), holds the `/runner/v1` WebSocket for runners, routes tasks (`TaskRouter`, in-memory), streams events back to Slack threads, writes channel messages to OpenViking. Does **not** store bot tokens — resolves them per-team via `app/`'s tRPC `slack.installationByTeam` with the `x-internal-secret` header.
 - **`runner/`** — thin Rust client: Cargo workspace with `crates/farol-core` and a Tauri 2 tray app in `apps/desktop`. Outbound-only wss connection (zero open ports); runs tasks on a local agent over ACP (JSON-RPC 2.0 over stdio).
 
-Memory model: Slack workspace = OpenViking account (tenant boundary); OV runs in trusted mode — only cloud/ talks to it, injecting `X-OpenViking-Account/User` headers. Channel messages are batched (50 msgs / 5 min) into `viking://resources/slack/{channel_id}/{date}.md`. Agents get memory only through the **gateway** (`cloud/app/gateway.py`, `/memory/mcp`): `AssignTask.memory` carries its URL plus a signed task token scoped to the mention's channel; the gateway proxies native OV MCP tools and rejects URIs outside the scope. The OV account is provisioned on Slack install via `/internal/provision`.
+Memory model: Slack workspace = OpenViking account (tenant boundary); OV runs in trusted mode — only cloud/ talks to it, injecting `X-OpenViking-Account/User` headers. Channel messages are batched (50 msgs / 5 min) into `viking://resources/slack/{channel_id}/{date}.md`. Agents get memory only through the **gateway** (`cloud/app/gateway.py`, `/memory/mcp`): `AssignTurn.memory` carries its URL plus a signed task token scoped to the mention's channel; the gateway proxies native OV MCP tools and rejects URIs outside the scope. The OV account is provisioned on Slack install via `/internal/provision`.
 
 ## The protocol is a double mirror — change both sides
 
-`runner/crates/farol-core/src/protocol.rs` (serde, `#[serde(tag = "type", rename_all = "snake_case")]`) and `cloud/app/protocol.py` (pydantic) define the same cloud↔runner contract and must change in lockstep: tags and field names match 1-to-1 in snake_case. Messages: `hello`, `assign_task`, `task_event`, `permission_decision`, `cancel_task`, `task_result`, `ping`/`pong`, `error`.
+`runner/crates/farol-core/src/protocol.rs` (serde, `#[serde(tag = "type", rename_all = "snake_case")]`) and `cloud/app/protocol.py` (pydantic) define the same cloud↔runner contract and must change in lockstep: tags and field names match 1-to-1 in snake_case. Messages: `hello`, `assign_turn`, `turn_event`, `permission_decision`, `cancel_turn`, `turn_result`, `ping`/`pong`, `error`.
 
 ## Commands
 

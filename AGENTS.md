@@ -30,7 +30,7 @@ agent on a developer's machine, while team memory is stored in OpenViking.
 Memory model: Slack workspace = OpenViking account (tenant boundary); channel
 messages are written in batches (50 msgs / 5 min) to
 `/{workspace}/resources/slack/{channel}/{date}.md`; the agent receives the
-OpenViking MCP endpoint via `AssignTask.memory`.
+OpenViking MCP endpoint via `AssignTurn.memory`.
 
 ## Code structure
 
@@ -123,8 +123,8 @@ Requirements: Rust stable, Node 18+, Tauri 2 system dependencies.
   (serde, `#[serde(tag = "type", rename_all = "snake_case")]`) and
   `cloud/app/protocol.py` (pydantic) must change in lockstep; snake_case tags and
   field names match 1-to-1. The contract is verified by round-trip serialization.
-- Protocol messages: `hello`, `assign_task`, `task_event`, `permission_decision`,
-  `cancel_task`, `task_result`, `ping`/`pong`, `error`.
+- Protocol messages: `hello`, `assign_turn`, `turn_event`, `permission_decision`,
+  `cancel_turn`, `turn_result`, `ping`/`pong`, `error`.
 
 ## Testing
 

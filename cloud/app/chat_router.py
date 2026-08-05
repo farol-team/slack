@@ -205,8 +205,8 @@ class ChatRouter:
         chat.status = "running"
         chat.current_turn_id = turn.turn_id
 
-        msg = p.AssignTask(
-            task_id=turn.turn_id, slack_channel=chat.slack_channel,
+        msg = p.AssignTurn(
+            turn_id=turn.turn_id, slack_channel=chat.slack_channel,
             slack_thread_ts=chat.thread_ts, prompt=prompt,
             agent=chat.agent or (runner.agents[0] if runner.agents else ""),
             cwd=chat.cwd, resume_session=chat.session_id, memory=memory,
@@ -222,30 +222,30 @@ class ChatRouter:
         })
         return turn
 
-    async def on_task_event(self, ev: p.TaskEvent, slack) -> None:
+    async def on_turn_event(self, ev: p.TurnEvent, slack) -> None:
         """Render runner events into the Slack thread."""
-        turn = self.turns.get(ev.task_id)
+        turn = self.turns.get(ev.turn_id)
         if not turn:
             return
 
-        if ev.kind == p.TaskEventKind.agent_message_chunk:
+        if ev.kind == p.TurnEventKind.agent_message_chunk:
             # Slack-friendly streaming: edit one message as chunks accumulate.
             await slack.stream_chunk(turn, ev.text)
-        elif ev.kind in (p.TaskEventKind.tool_call, p.TaskEventKind.tool_call_update):
+        elif ev.kind in (p.TurnEventKind.tool_call, p.TurnEventKind.tool_call_update):
             await slack.post_status(turn, f":hammer_and_wrench: `{ev.text}`")
-        elif ev.kind == p.TaskEventKind.plan:
+        elif ev.kind == p.TurnEventKind.plan:
             await slack.post_status(turn, f":clipboard: plan:\n{ev.text}")
-        elif ev.kind == p.TaskEventKind.permission_request:
+        elif ev.kind == p.TurnEventKind.permission_request:
             ts = await slack.post_permission_request(turn, ev.permission_id, ev.text)
             if ev.permission_id and ts:
                 turn.permission_msgs[ev.permission_id] = ts
-        elif ev.kind == p.TaskEventKind.error:
+        elif ev.kind == p.TurnEventKind.error:
             await slack.post_status(turn, f":warning: {ev.text}")
 
-    async def on_task_result(self, res: p.TaskResult, slack) -> None:
+    async def on_turn_result(self, res: p.TurnResult, slack) -> None:
         # The turn is over: fold its outcome into the chat and drop the
         # in-flight entry — thread continuity lives on the Chat.
-        turn = self.turns.pop(res.task_id, None)
+        turn = self.turns.pop(res.turn_id, None)
         if not turn:
             return
         turn.status = res.status.value
@@ -268,7 +268,7 @@ class ChatRouter:
         for turn in self.turns.values():
             if permission_id in turn.permission_msgs:
                 await turn.runner.ws.send_text(encode(p.PermissionDecision(
-                    task_id=turn.turn_id, permission_id=permission_id, approved=approved)))
+                    turn_id=turn.turn_id, permission_id=permission_id, approved=approved)))
                 del turn.permission_msgs[permission_id]
                 return
         log.warning("permission %s not found", permission_id)
@@ -280,7 +280,7 @@ class ChatRouter:
         turn = self.turns.get(chat.current_turn_id)
         if not turn:
             return False
-        await turn.runner.ws.send_text(encode(p.CancelTask(task_id=turn.turn_id)))
+        await turn.runner.ws.send_text(encode(p.CancelTurn(turn_id=turn.turn_id)))
         return True
 
 

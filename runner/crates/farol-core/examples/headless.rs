@@ -46,14 +46,14 @@ async fn main() -> anyhow::Result<()> {
             let sm = slot.lock().await.clone();
             let Some(sm) = sm else { return };
             match msg {
-                CloudMessage::AssignTask(task) => {
+                CloudMessage::AssignTurn(task) => {
                     tokio::spawn(async move { sm.handle_assign(task).await });
                 }
                 CloudMessage::PermissionDecision(d) => {
-                    sm.handle_permission(d.task_id, d.permission_id, d.approved).await;
+                    sm.handle_permission(d.turn_id, d.permission_id, d.approved).await;
                 }
-                CloudMessage::CancelTask { task_id } => {
-                    sm.handle_cancel(task_id).await;
+                CloudMessage::CancelTurn { turn_id } => {
+                    sm.handle_cancel(turn_id).await;
                 }
                 CloudMessage::Error { code, message } => {
                     error!("cloud error: {code}: {message}");
