@@ -1,22 +1,34 @@
 import {
-  mysqlTable,
-  mysqlEnum,
+  pgTable,
+  pgEnum,
   serial,
+  integer,
   varchar,
   text,
   timestamp,
-  bigint,
   boolean,
-  json,
-} from "drizzle-orm/mysql-core";
+  jsonb,
+} from "drizzle-orm/pg-core";
 
-export const users = mysqlTable("users", {
+export const userRole = pgEnum("user_role", ["user", "admin"]);
+export const workspacePlan = pgEnum("workspace_plan", ["free", "team", "enterprise"]);
+export const memberRole = pgEnum("member_role", ["owner", "admin", "member"]);
+export const chatStatus = pgEnum("chat_status", ["idle", "running"]);
+export const taskStatus = pgEnum("task_status", [
+  "running",
+  "done",
+  "failed",
+  "cancelled",
+  "orphaned",
+]);
+
+export const users = pgTable("users", {
   id: serial("id").primaryKey(),
   unionId: varchar("unionId", { length: 255 }).notNull().unique(),
   name: varchar("name", { length: 255 }),
   email: varchar("email", { length: 320 }),
   avatar: text("avatar"),
-  role: mysqlEnum("role", ["user", "admin"]).default("user").notNull(),
+  role: userRole("role").default("user").notNull(),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
   updatedAt: timestamp("updatedAt")
     .defaultNow()
@@ -30,9 +42,9 @@ export type InsertUser = typeof users.$inferInsert;
 
 // ---------- SaaS domain: Slack workspace = OpenViking account ----------
 
-export const workspaces = mysqlTable("workspaces", {
+export const workspaces = pgTable("workspaces", {
   id: serial("id").primaryKey(),
-  ownerUserId: bigint("ownerUserId", { mode: "number", unsigned: true })
+  ownerUserId: integer("ownerUserId")
     .notNull()
     .references(() => users.id),
   name: varchar("name", { length: 255 }).notNull(),
@@ -40,45 +52,41 @@ export const workspaces = mysqlTable("workspaces", {
   slackTeamId: varchar("slackTeamId", { length: 64 }).unique(),
   /** OpenViking account id (= tenant boundary). */
   ovAccountId: varchar("ovAccountId", { length: 64 }).notNull().unique(),
-  plan: mysqlEnum("plan", ["free", "team", "enterprise"])
-    .default("free")
-    .notNull(),
+  plan: workspacePlan("plan").default("free").notNull(),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
 });
 export type Workspace = typeof workspaces.$inferSelect;
 
-export const workspaceMembers = mysqlTable("workspace_members", {
+export const workspaceMembers = pgTable("workspace_members", {
   id: serial("id").primaryKey(),
-  workspaceId: bigint("workspaceId", { mode: "number", unsigned: true })
+  workspaceId: integer("workspaceId")
     .notNull()
     .references(() => workspaces.id),
-  userId: bigint("userId", { mode: "number", unsigned: true })
+  userId: integer("userId")
     .notNull()
     .references(() => users.id),
   /** OpenViking user key issued for this member (memory identity). */
   ovUserKey: varchar("ovUserKey", { length: 128 }),
   /** Slack user id (U…) linked to this member; matched by email on first mention. */
   slackUserId: varchar("slackUserId", { length: 32 }),
-  role: mysqlEnum("role", ["owner", "admin", "member"])
-    .default("member")
-    .notNull(),
+  role: memberRole("role").default("member").notNull(),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
 });
 export type WorkspaceMember = typeof workspaceMembers.$inferSelect;
 
-export const runners = mysqlTable("runners", {
+export const runners = pgTable("runners", {
   id: serial("id").primaryKey(),
-  workspaceId: bigint("workspaceId", { mode: "number", unsigned: true })
+  workspaceId: integer("workspaceId")
     .notNull()
     .references(() => workspaces.id),
   /** Member who owns this runner: their mentions run here (BYOA). */
-  ownerMemberId: bigint("ownerMemberId", { mode: "number", unsigned: true })
+  ownerMemberId: integer("ownerMemberId")
     .notNull()
     .references(() => workspaceMembers.id),
   label: varchar("label", { length: 255 }).notNull(),
   /** SHA-256 of the issued `frl_...` token — the token itself is never stored. */
   tokenHash: varchar("tokenHash", { length: 64 }).notNull().unique(),
-  agents: json("agents").$type<string[]>(),
+  agents: jsonb("agents").$type<string[]>(),
   version: varchar("version", { length: 32 }),
   lastSeenAt: timestamp("lastSeenAt"),
   revokedAt: timestamp("revokedAt"),
@@ -86,9 +94,9 @@ export const runners = mysqlTable("runners", {
 });
 export type Runner = typeof runners.$inferSelect;
 
-export const channels = mysqlTable("channels", {
+export const channels = pgTable("channels", {
   id: serial("id").primaryKey(),
-  workspaceId: bigint("workspaceId", { mode: "number", unsigned: true })
+  workspaceId: integer("workspaceId")
     .notNull()
     .references(() => workspaces.id),
   slackChannelId: varchar("slackChannelId", { length: 64 }).notNull(),
@@ -100,19 +108,18 @@ export type Channel = typeof channels.$inferSelect;
 
 /** A conversation: one Slack thread bound to an owner and an ACP session.
  *  Mirrored from the cloud (source of truth for live state). */
-export const chats = mysqlTable("chats", {
+export const chats = pgTable("chats", {
   id: serial("id").primaryKey(),
   /** Cloud-side chat id (UUID). */
   chatUuid: varchar("chatUuid", { length: 36 }).notNull().unique(),
-  workspaceId: bigint("workspaceId", { mode: "number", unsigned: true })
+  workspaceId: integer("workspaceId")
     .notNull()
     .references(() => workspaces.id),
-  ownerMemberId: bigint("ownerMemberId", { mode: "number", unsigned: true })
-    .references(() => workspaceMembers.id),
+  ownerMemberId: integer("ownerMemberId").references(() => workspaceMembers.id),
   slackChannelId: varchar("slackChannelId", { length: 64 }).notNull(),
   threadTs: varchar("threadTs", { length: 32 }).notNull(),
   acpSessionId: varchar("acpSessionId", { length: 128 }),
-  status: mysqlEnum("status", ["idle", "running"]).default("idle").notNull(),
+  status: chatStatus("status").default("idle").notNull(),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
   lastActivityAt: timestamp("lastActivityAt")
     .defaultNow()
@@ -122,31 +129,28 @@ export const chats = mysqlTable("chats", {
 export type Chat = typeof chats.$inferSelect;
 
 /** One turn of a chat: prompt -> result. */
-export const tasks = mysqlTable("tasks", {
+export const tasks = pgTable("tasks", {
   id: serial("id").primaryKey(),
   /** Cloud-side task id (UUID). */
   taskUuid: varchar("taskUuid", { length: 36 }).notNull().unique(),
-  chatId: bigint("chatId", { mode: "number", unsigned: true })
+  chatId: integer("chatId")
     .notNull()
     .references(() => chats.id),
-  workspaceId: bigint("workspaceId", { mode: "number", unsigned: true })
+  workspaceId: integer("workspaceId")
     .notNull()
     .references(() => workspaces.id),
-  runnerId: bigint("runnerId", { mode: "number", unsigned: true })
-    .references(() => runners.id),
+  runnerId: integer("runnerId").references(() => runners.id),
   prompt: text("prompt").notNull(),
-  status: mysqlEnum("status", ["running", "done", "failed", "cancelled", "orphaned"])
-    .default("running")
-    .notNull(),
+  status: taskStatus("status").default("running").notNull(),
   error: text("error"),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
   finishedAt: timestamp("finishedAt"),
 });
 export type Task = typeof tasks.$inferSelect;
 
-export const slackInstallations = mysqlTable("slack_installations", {
+export const slackInstallations = pgTable("slack_installations", {
   id: serial("id").primaryKey(),
-  workspaceId: bigint("workspaceId", { mode: "number", unsigned: true })
+  workspaceId: integer("workspaceId")
     .notNull()
     .references(() => workspaces.id),
   teamId: varchar("teamId", { length: 64 }).notNull().unique(),
@@ -155,10 +159,7 @@ export const slackInstallations = mysqlTable("slack_installations", {
   /** Bot access token (xoxb-...). Production: encrypt at rest (KMS). */
   botToken: text("botToken").notNull(),
   scopes: varchar("scopes", { length: 512 }),
-  installedByUserId: bigint("installedByUserId", {
-    mode: "number",
-    unsigned: true,
-  }).references(() => users.id),
+  installedByUserId: integer("installedByUserId").references(() => users.id),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
   updatedAt: timestamp("updatedAt")
     .defaultNow()
@@ -168,29 +169,16 @@ export const slackInstallations = mysqlTable("slack_installations", {
 export type SlackInstallation = typeof slackInstallations.$inferSelect;
 
 /** One-time OAuth state tokens (CSRF protection for the Slack flow). */
-export const slackOauthStates = mysqlTable("slack_oauth_states", {
+export const slackOauthStates = pgTable("slack_oauth_states", {
   id: serial("id").primaryKey(),
   state: varchar("state", { length: 64 }).notNull().unique(),
-  workspaceId: bigint("workspaceId", { mode: "number", unsigned: true })
+  workspaceId: integer("workspaceId")
     .notNull()
     .references(() => workspaces.id),
-  userId: bigint("userId", { mode: "number", unsigned: true })
+  userId: integer("userId")
     .notNull()
     .references(() => users.id),
   expiresAt: timestamp("expiresAt").notNull(),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
 });
 export type SlackOauthState = typeof slackOauthStates.$inferSelect;
-
-// TODO: Add your tables here. See docs/Database.md for schema examples and patterns.
-//
-// Example:
-// export const posts = mysqlTable("posts", {
-//   id: serial("id").primaryKey(),
-//   title: varchar("title", { length: 255 }).notNull(),
-//   content: text("content"),
-//   createdAt: timestamp("created_at").notNull().defaultNow(),
-// });
-//
-// Note: FK columns referencing a serial() PK must use:
-//   bigint("columnName", { mode: "number", unsigned: true }).notNull()

@@ -13,10 +13,10 @@ Slack ──Events API──► cloud (Python/FastAPI) ──wss──► runner
      ◄──render to thread──      ▲                            │ spawn
                                 │ tRPC (x-internal-secret)   ▼
                           app/ (SaaS panel,           local agent via ACP
-                          React + Hono + MySQL)       (claude/gemini --acp, stdio)
+                          React + Hono + PostgreSQL)       (claude/gemini --acp, stdio)
 ```
 
-- **`app/`** — SaaS control plane: React 19 + Vite frontend, Hono + tRPC backend, MySQL via Drizzle, Kimi OAuth. Stores workspaces, runners, channels, tasks, and Slack installations (bot tokens).
+- **`app/`** — SaaS control plane: React 19 + Vite frontend, Hono + tRPC backend, PostgreSQL via Drizzle, Kimi OAuth. Stores workspaces, runners, channels, tasks, and Slack installations (bot tokens).
 - **`cloud/`** — data plane: receives Slack Events (Slack Bolt), holds the `/runner/v1` WebSocket for runners, routes tasks (`TaskRouter`, in-memory), streams events back to Slack threads, writes channel messages to OpenViking. Does **not** store bot tokens — resolves them per-team via `app/`'s tRPC `slack.installationByTeam` with the `x-internal-secret` header.
 - **`runner/`** — thin Rust client: Cargo workspace with `crates/farol-core` and a Tauri 2 tray app in `apps/desktop`. Outbound-only wss connection (zero open ports); runs tasks on a local agent over ACP (JSON-RPC 2.0 over stdio).
 
@@ -66,7 +66,7 @@ Minimal pre-submit check: `npm run check` + `npm run lint` (app), `cargo check` 
 
 - **Doc/comment language:** English everywhere. Legacy comments in `cloud/` and `runner/` may still be in Russian — translate opportunistically when touching them.
 - **app/**: path aliases `@/* → src/*`, `@contracts/* → contracts/*`, `@db/* → db/*`. tRPC procedures go through `publicQuery` / `authedQuery` / `adminQuery` from `api/middleware.ts`; transformer is superjson. UI uses shadcn components from `@/components/ui` (40+ available). Prettier: double quotes, semicolons, es5 trailing commas, width 80.
-- **DB schema** (`app/db/schema.ts`): PKs are `serial()`; FKs referencing serial PKs must be `bigint("col", { mode: "number", unsigned: true })`. Enums via `mysqlEnum`.
+- **DB schema** (`app/db/schema.ts`): PostgreSQL (drizzle pg-core). PKs are `serial()`; FKs referencing serial PKs use `integer("col")`. Enums are declared with `pgEnum` at the top of the file.
 - **Key server files** (`app/api/`): `boot.ts` (Hono entry), `router.ts` (root tRPC router: `auth`, `workspace`, `runner`, `memory`, `billing`, `slack`), `saas-router.ts` (domain logic), `slack-oauth.ts` ("Add to Slack" OAuth v2).
 - **Key cloud files** (`cloud/app/`): `main.py` (FastAPI: `/runner/v1` WS, `/slack/events`, `/memory/mcp`, `/internal/*` behind `x-internal-secret`, `/healthz`), `slack_app.py` (mentions, follow-up turns, Approve/Deny/Stop buttons, IngestionBuffer), `task_router.py` (ChatRouter: Chat = Slack thread owning the ACP session; Task = one turn; the wire protocol stays task-based), `gateway.py`, `memory.py` (OpenViking HTTP client).
 - **Key runner files** (`runner/crates/farol-core/src/`): `protocol.rs`, `acp.rs` (ACP client), `cloud.rs` (WS loop with reconnect/backoff), `session.rs` (SessionManager), `config.rs` (config + OS keychain for token).

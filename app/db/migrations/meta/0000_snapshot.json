@@ -1,46 +1,42 @@
 {
-  "version": "5",
-  "dialect": "mysql",
-  "id": "ee418f58-5398-40b4-ae96-7207ecb292df",
+  "id": "4e39fe7f-8ec9-4bb5-9591-bc484311a603",
   "prevId": "00000000-0000-0000-0000-000000000000",
+  "version": "7",
+  "dialect": "postgresql",
   "tables": {
-    "channels": {
+    "public.channels": {
       "name": "channels",
+      "schema": "",
       "columns": {
         "id": {
           "name": "id",
           "type": "serial",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": true
+          "primaryKey": true,
+          "notNull": true
         },
         "workspaceId": {
           "name": "workspaceId",
-          "type": "bigint unsigned",
+          "type": "integer",
           "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
+          "notNull": true
         },
         "slackChannelId": {
           "name": "slackChannelId",
           "type": "varchar(64)",
           "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
+          "notNull": true
         },
         "name": {
           "name": "name",
           "type": "varchar(255)",
           "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
+          "notNull": true
         },
         "ingestEnabled": {
           "name": "ingestEnabled",
           "type": "boolean",
           "primaryKey": false,
           "notNull": true,
-          "autoincrement": false,
           "default": true
         },
         "createdAt": {
@@ -48,8 +44,7 @@
           "type": "timestamp",
           "primaryKey": false,
           "notNull": true,
-          "autoincrement": false,
-          "default": "(now())"
+          "default": "now()"
         }
       },
       "indexes": {},
@@ -68,75 +63,64 @@
           "onUpdate": "no action"
         }
       },
-      "compositePrimaryKeys": {
-        "channels_id": {
-          "name": "channels_id",
-          "columns": [
-            "id"
-          ]
-        }
-      },
+      "compositePrimaryKeys": {},
       "uniqueConstraints": {},
-      "checkConstraint": {}
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
     },
-    "chats": {
+    "public.chats": {
       "name": "chats",
+      "schema": "",
       "columns": {
         "id": {
           "name": "id",
           "type": "serial",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": true
+          "primaryKey": true,
+          "notNull": true
         },
         "chatUuid": {
           "name": "chatUuid",
           "type": "varchar(36)",
           "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
+          "notNull": true
         },
         "workspaceId": {
           "name": "workspaceId",
-          "type": "bigint unsigned",
+          "type": "integer",
           "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
+          "notNull": true
         },
         "ownerMemberId": {
           "name": "ownerMemberId",
-          "type": "bigint unsigned",
+          "type": "integer",
           "primaryKey": false,
-          "notNull": false,
-          "autoincrement": false
+          "notNull": false
         },
         "slackChannelId": {
           "name": "slackChannelId",
           "type": "varchar(64)",
           "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
+          "notNull": true
         },
         "threadTs": {
           "name": "threadTs",
           "type": "varchar(32)",
           "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
+          "notNull": true
         },
         "acpSessionId": {
           "name": "acpSessionId",
           "type": "varchar(128)",
           "primaryKey": false,
-          "notNull": false,
-          "autoincrement": false
+          "notNull": false
         },
         "status": {
           "name": "status",
-          "type": "enum('idle','running')",
+          "type": "chat_status",
+          "typeSchema": "public",
           "primaryKey": false,
           "notNull": true,
-          "autoincrement": false,
           "default": "'idle'"
         },
         "createdAt": {
@@ -144,16 +128,14 @@
           "type": "timestamp",
           "primaryKey": false,
           "notNull": true,
-          "autoincrement": false,
-          "default": "(now())"
+          "default": "now()"
         },
         "lastActivityAt": {
           "name": "lastActivityAt",
           "type": "timestamp",
           "primaryKey": false,
           "notNull": true,
-          "autoincrement": false,
-          "default": "(now())"
+          "default": "now()"
         }
       },
       "indexes": {},
@@ -185,97 +167,84 @@
           "onUpdate": "no action"
         }
       },
-      "compositePrimaryKeys": {
-        "chats_id": {
-          "name": "chats_id",
-          "columns": [
-            "id"
-          ]
-        }
-      },
+      "compositePrimaryKeys": {},
       "uniqueConstraints": {
         "chats_chatUuid_unique": {
           "name": "chats_chatUuid_unique",
+          "nullsNotDistinct": false,
           "columns": [
             "chatUuid"
           ]
         }
       },
-      "checkConstraint": {}
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
     },
-    "runners": {
+    "public.runners": {
       "name": "runners",
+      "schema": "",
       "columns": {
         "id": {
           "name": "id",
           "type": "serial",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": true
+          "primaryKey": true,
+          "notNull": true
         },
         "workspaceId": {
           "name": "workspaceId",
-          "type": "bigint unsigned",
+          "type": "integer",
           "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
+          "notNull": true
         },
         "ownerMemberId": {
           "name": "ownerMemberId",
-          "type": "bigint unsigned",
+          "type": "integer",
           "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
+          "notNull": true
         },
         "label": {
           "name": "label",
           "type": "varchar(255)",
           "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
+          "notNull": true
         },
         "tokenHash": {
           "name": "tokenHash",
           "type": "varchar(64)",
           "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
+          "notNull": true
         },
         "agents": {
           "name": "agents",
-          "type": "json",
+          "type": "jsonb",
           "primaryKey": false,
-          "notNull": false,
-          "autoincrement": false
+          "notNull": false
         },
         "version": {
           "name": "version",
           "type": "varchar(32)",
           "primaryKey": false,
-          "notNull": false,
-          "autoincrement": false
+          "notNull": false
         },
         "lastSeenAt": {
           "name": "lastSeenAt",
           "type": "timestamp",
           "primaryKey": false,
-          "notNull": false,
-          "autoincrement": false
+          "notNull": false
         },
         "revokedAt": {
           "name": "revokedAt",
           "type": "timestamp",
           "primaryKey": false,
-          "notNull": false,
-          "autoincrement": false
+          "notNull": false
         },
         "createdAt": {
           "name": "createdAt",
           "type": "timestamp",
           "primaryKey": false,
           "notNull": true,
-          "autoincrement": false,
-          "default": "(now())"
+          "default": "now()"
         }
       },
       "indexes": {},
@@ -307,98 +276,85 @@
           "onUpdate": "no action"
         }
       },
-      "compositePrimaryKeys": {
-        "runners_id": {
-          "name": "runners_id",
-          "columns": [
-            "id"
-          ]
-        }
-      },
+      "compositePrimaryKeys": {},
       "uniqueConstraints": {
         "runners_tokenHash_unique": {
           "name": "runners_tokenHash_unique",
+          "nullsNotDistinct": false,
           "columns": [
             "tokenHash"
           ]
         }
       },
-      "checkConstraint": {}
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
     },
-    "slack_installations": {
+    "public.slack_installations": {
       "name": "slack_installations",
+      "schema": "",
       "columns": {
         "id": {
           "name": "id",
           "type": "serial",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": true
+          "primaryKey": true,
+          "notNull": true
         },
         "workspaceId": {
           "name": "workspaceId",
-          "type": "bigint unsigned",
+          "type": "integer",
           "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
+          "notNull": true
         },
         "teamId": {
           "name": "teamId",
           "type": "varchar(64)",
           "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
+          "notNull": true
         },
         "teamName": {
           "name": "teamName",
           "type": "varchar(255)",
           "primaryKey": false,
-          "notNull": false,
-          "autoincrement": false
+          "notNull": false
         },
         "botUserId": {
           "name": "botUserId",
           "type": "varchar(64)",
           "primaryKey": false,
-          "notNull": false,
-          "autoincrement": false
+          "notNull": false
         },
         "botToken": {
           "name": "botToken",
           "type": "text",
           "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
+          "notNull": true
         },
         "scopes": {
           "name": "scopes",
           "type": "varchar(512)",
           "primaryKey": false,
-          "notNull": false,
-          "autoincrement": false
+          "notNull": false
         },
         "installedByUserId": {
           "name": "installedByUserId",
-          "type": "bigint unsigned",
+          "type": "integer",
           "primaryKey": false,
-          "notNull": false,
-          "autoincrement": false
+          "notNull": false
         },
         "createdAt": {
           "name": "createdAt",
           "type": "timestamp",
           "primaryKey": false,
           "notNull": true,
-          "autoincrement": false,
-          "default": "(now())"
+          "default": "now()"
         },
         "updatedAt": {
           "name": "updatedAt",
           "type": "timestamp",
           "primaryKey": false,
           "notNull": true,
-          "autoincrement": false,
-          "default": "(now())"
+          "default": "now()"
         }
       },
       "indexes": {},
@@ -430,69 +386,60 @@
           "onUpdate": "no action"
         }
       },
-      "compositePrimaryKeys": {
-        "slack_installations_id": {
-          "name": "slack_installations_id",
-          "columns": [
-            "id"
-          ]
-        }
-      },
+      "compositePrimaryKeys": {},
       "uniqueConstraints": {
         "slack_installations_teamId_unique": {
           "name": "slack_installations_teamId_unique",
+          "nullsNotDistinct": false,
           "columns": [
             "teamId"
           ]
         }
       },
-      "checkConstraint": {}
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
     },
-    "slack_oauth_states": {
+    "public.slack_oauth_states": {
       "name": "slack_oauth_states",
+      "schema": "",
       "columns": {
         "id": {
           "name": "id",
           "type": "serial",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": true
+          "primaryKey": true,
+          "notNull": true
         },
         "state": {
           "name": "state",
           "type": "varchar(64)",
           "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
+          "notNull": true
         },
         "workspaceId": {
           "name": "workspaceId",
-          "type": "bigint unsigned",
+          "type": "integer",
           "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
+          "notNull": true
         },
         "userId": {
           "name": "userId",
-          "type": "bigint unsigned",
+          "type": "integer",
           "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
+          "notNull": true
         },
         "expiresAt": {
           "name": "expiresAt",
           "type": "timestamp",
           "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
+          "notNull": true
         },
         "createdAt": {
           "name": "createdAt",
           "type": "timestamp",
           "primaryKey": false,
           "notNull": true,
-          "autoincrement": false,
-          "default": "(now())"
+          "default": "now()"
         }
       },
       "indexes": {},
@@ -524,98 +471,86 @@
           "onUpdate": "no action"
         }
       },
-      "compositePrimaryKeys": {
-        "slack_oauth_states_id": {
-          "name": "slack_oauth_states_id",
-          "columns": [
-            "id"
-          ]
-        }
-      },
+      "compositePrimaryKeys": {},
       "uniqueConstraints": {
         "slack_oauth_states_state_unique": {
           "name": "slack_oauth_states_state_unique",
+          "nullsNotDistinct": false,
           "columns": [
             "state"
           ]
         }
       },
-      "checkConstraint": {}
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
     },
-    "tasks": {
+    "public.tasks": {
       "name": "tasks",
+      "schema": "",
       "columns": {
         "id": {
           "name": "id",
           "type": "serial",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": true
+          "primaryKey": true,
+          "notNull": true
         },
         "taskUuid": {
           "name": "taskUuid",
           "type": "varchar(36)",
           "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
+          "notNull": true
         },
         "chatId": {
           "name": "chatId",
-          "type": "bigint unsigned",
+          "type": "integer",
           "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
+          "notNull": true
         },
         "workspaceId": {
           "name": "workspaceId",
-          "type": "bigint unsigned",
+          "type": "integer",
           "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
+          "notNull": true
         },
         "runnerId": {
           "name": "runnerId",
-          "type": "bigint unsigned",
+          "type": "integer",
           "primaryKey": false,
-          "notNull": false,
-          "autoincrement": false
+          "notNull": false
         },
         "prompt": {
           "name": "prompt",
           "type": "text",
           "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
+          "notNull": true
         },
         "status": {
           "name": "status",
-          "type": "enum('running','done','failed','cancelled','orphaned')",
+          "type": "task_status",
+          "typeSchema": "public",
           "primaryKey": false,
           "notNull": true,
-          "autoincrement": false,
           "default": "'running'"
         },
         "error": {
           "name": "error",
           "type": "text",
           "primaryKey": false,
-          "notNull": false,
-          "autoincrement": false
+          "notNull": false
         },
         "createdAt": {
           "name": "createdAt",
           "type": "timestamp",
           "primaryKey": false,
           "notNull": true,
-          "autoincrement": false,
-          "default": "(now())"
+          "default": "now()"
         },
         "finishedAt": {
           "name": "finishedAt",
           "type": "timestamp",
           "primaryKey": false,
-          "notNull": false,
-          "autoincrement": false
+          "notNull": false
         }
       },
       "indexes": {},
@@ -660,68 +595,60 @@
           "onUpdate": "no action"
         }
       },
-      "compositePrimaryKeys": {
-        "tasks_id": {
-          "name": "tasks_id",
-          "columns": [
-            "id"
-          ]
-        }
-      },
+      "compositePrimaryKeys": {},
       "uniqueConstraints": {
         "tasks_taskUuid_unique": {
           "name": "tasks_taskUuid_unique",
+          "nullsNotDistinct": false,
           "columns": [
             "taskUuid"
           ]
         }
       },
-      "checkConstraint": {}
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
     },
-    "users": {
+    "public.users": {
       "name": "users",
+      "schema": "",
       "columns": {
         "id": {
           "name": "id",
           "type": "serial",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": true
+          "primaryKey": true,
+          "notNull": true
         },
         "unionId": {
           "name": "unionId",
           "type": "varchar(255)",
           "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
+          "notNull": true
         },
         "name": {
           "name": "name",
           "type": "varchar(255)",
           "primaryKey": false,
-          "notNull": false,
-          "autoincrement": false
+          "notNull": false
         },
         "email": {
           "name": "email",
           "type": "varchar(320)",
           "primaryKey": false,
-          "notNull": false,
-          "autoincrement": false
+          "notNull": false
         },
         "avatar": {
           "name": "avatar",
           "type": "text",
           "primaryKey": false,
-          "notNull": false,
-          "autoincrement": false
+          "notNull": false
         },
         "role": {
           "name": "role",
-          "type": "enum('user','admin')",
+          "type": "user_role",
+          "typeSchema": "public",
           "primaryKey": false,
           "notNull": true,
-          "autoincrement": false,
           "default": "'user'"
         },
         "createdAt": {
@@ -729,90 +656,79 @@
           "type": "timestamp",
           "primaryKey": false,
           "notNull": true,
-          "autoincrement": false,
-          "default": "(now())"
+          "default": "now()"
         },
         "updatedAt": {
           "name": "updatedAt",
           "type": "timestamp",
           "primaryKey": false,
           "notNull": true,
-          "autoincrement": false,
-          "default": "(now())"
+          "default": "now()"
         },
         "lastSignInAt": {
           "name": "lastSignInAt",
           "type": "timestamp",
           "primaryKey": false,
           "notNull": true,
-          "autoincrement": false,
-          "default": "(now())"
+          "default": "now()"
         }
       },
       "indexes": {},
       "foreignKeys": {},
-      "compositePrimaryKeys": {
-        "users_id": {
-          "name": "users_id",
-          "columns": [
-            "id"
-          ]
-        }
-      },
+      "compositePrimaryKeys": {},
       "uniqueConstraints": {
         "users_unionId_unique": {
           "name": "users_unionId_unique",
+          "nullsNotDistinct": false,
           "columns": [
             "unionId"
           ]
         }
       },
-      "checkConstraint": {}
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
     },
-    "workspace_members": {
+    "public.workspace_members": {
       "name": "workspace_members",
+      "schema": "",
       "columns": {
         "id": {
           "name": "id",
           "type": "serial",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": true
+          "primaryKey": true,
+          "notNull": true
         },
         "workspaceId": {
           "name": "workspaceId",
-          "type": "bigint unsigned",
+          "type": "integer",
           "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
+          "notNull": true
         },
         "userId": {
           "name": "userId",
-          "type": "bigint unsigned",
+          "type": "integer",
           "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
+          "notNull": true
         },
         "ovUserKey": {
           "name": "ovUserKey",
           "type": "varchar(128)",
           "primaryKey": false,
-          "notNull": false,
-          "autoincrement": false
+          "notNull": false
         },
         "slackUserId": {
           "name": "slackUserId",
           "type": "varchar(32)",
           "primaryKey": false,
-          "notNull": false,
-          "autoincrement": false
+          "notNull": false
         },
         "role": {
           "name": "role",
-          "type": "enum('owner','admin','member')",
+          "type": "member_role",
+          "typeSchema": "public",
           "primaryKey": false,
           "notNull": true,
-          "autoincrement": false,
           "default": "'member'"
         },
         "createdAt": {
@@ -820,8 +736,7 @@
           "type": "timestamp",
           "primaryKey": false,
           "notNull": true,
-          "autoincrement": false,
-          "default": "(now())"
+          "default": "now()"
         }
       },
       "indexes": {},
@@ -853,61 +768,52 @@
           "onUpdate": "no action"
         }
       },
-      "compositePrimaryKeys": {
-        "workspace_members_id": {
-          "name": "workspace_members_id",
-          "columns": [
-            "id"
-          ]
-        }
-      },
+      "compositePrimaryKeys": {},
       "uniqueConstraints": {},
-      "checkConstraint": {}
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
     },
-    "workspaces": {
+    "public.workspaces": {
       "name": "workspaces",
+      "schema": "",
       "columns": {
         "id": {
           "name": "id",
           "type": "serial",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": true
+          "primaryKey": true,
+          "notNull": true
         },
         "ownerUserId": {
           "name": "ownerUserId",
-          "type": "bigint unsigned",
+          "type": "integer",
           "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
+          "notNull": true
         },
         "name": {
           "name": "name",
           "type": "varchar(255)",
           "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
+          "notNull": true
         },
         "slackTeamId": {
           "name": "slackTeamId",
           "type": "varchar(64)",
           "primaryKey": false,
-          "notNull": false,
-          "autoincrement": false
+          "notNull": false
         },
         "ovAccountId": {
           "name": "ovAccountId",
           "type": "varchar(64)",
           "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
+          "notNull": true
         },
         "plan": {
           "name": "plan",
-          "type": "enum('free','team','enterprise')",
+          "type": "workspace_plan",
+          "typeSchema": "public",
           "primaryKey": false,
           "notNull": true,
-          "autoincrement": false,
           "default": "'free'"
         },
         "createdAt": {
@@ -915,8 +821,7 @@
           "type": "timestamp",
           "primaryKey": false,
           "notNull": true,
-          "autoincrement": false,
-          "default": "(now())"
+          "default": "now()"
         }
       },
       "indexes": {},
@@ -935,39 +840,83 @@
           "onUpdate": "no action"
         }
       },
-      "compositePrimaryKeys": {
-        "workspaces_id": {
-          "name": "workspaces_id",
-          "columns": [
-            "id"
-          ]
-        }
-      },
+      "compositePrimaryKeys": {},
       "uniqueConstraints": {
         "workspaces_slackTeamId_unique": {
           "name": "workspaces_slackTeamId_unique",
+          "nullsNotDistinct": false,
           "columns": [
             "slackTeamId"
           ]
         },
         "workspaces_ovAccountId_unique": {
           "name": "workspaces_ovAccountId_unique",
+          "nullsNotDistinct": false,
           "columns": [
             "ovAccountId"
           ]
         }
       },
-      "checkConstraint": {}
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
     }
   },
+  "enums": {
+    "public.chat_status": {
+      "name": "chat_status",
+      "schema": "public",
+      "values": [
+        "idle",
+        "running"
+      ]
+    },
+    "public.member_role": {
+      "name": "member_role",
+      "schema": "public",
+      "values": [
+        "owner",
+        "admin",
+        "member"
+      ]
+    },
+    "public.task_status": {
+      "name": "task_status",
+      "schema": "public",
+      "values": [
+        "running",
+        "done",
+        "failed",
+        "cancelled",
+        "orphaned"
+      ]
+    },
+    "public.user_role": {
+      "name": "user_role",
+      "schema": "public",
+      "values": [
+        "user",
+        "admin"
+      ]
+    },
+    "public.workspace_plan": {
+      "name": "workspace_plan",
+      "schema": "public",
+      "values": [
+        "free",
+        "team",
+        "enterprise"
+      ]
+    }
+  },
+  "schemas": {},
+  "sequences": {},
+  "roles": {},
+  "policies": {},
   "views": {},
   "_meta": {
+    "columns": {},
     "schemas": {},
-    "tables": {},
-    "columns": {}
-  },
-  "internal": {
-    "tables": {},
-    "indexes": {}
+    "tables": {}
   }
 }

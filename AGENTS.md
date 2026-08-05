@@ -11,11 +11,11 @@ agent on a developer's machine, while team memory is stored in OpenViking.
       ◄──render to thread──     ▲                            │ spawn
                                 │ tRPC (x-internal-secret)   ▼
                           app/ (SaaS panel,           local agent
-                          React + Hono + MySQL)       claude/gemini --acp (stdio)
+                          React + Hono + PostgreSQL)       claude/gemini --acp (stdio)
 ```
 
 - **`app/`** — SaaS control plane: web UI on React 19 + Vite, backend on
-  Hono + tRPC, MySQL via Drizzle ORM, authentication via Kimi OAuth.
+  Hono + tRPC, PostgreSQL via Drizzle ORM, authentication via Kimi OAuth.
   Stores workspaces, runners, channels, tasks, and Slack installations (bot tokens).
 - **`cloud/`** — cloud service (data plane) on Python/FastAPI: receives Slack
   Events (Slack Bolt), holds the `/runner/v1` WebSocket for runners, routes tasks
@@ -41,7 +41,7 @@ OpenViking MCP endpoint via `AssignTask.memory`.
   `saas-router.ts` (SaaS domain logic), `slack-oauth.ts` (OAuth v2 "Add to Slack"),
   `kimi/` (Kimi OAuth), `queries/` (DB access), `lib/` (env, cookies, vite integration).
 - `contracts/` — types/constants shared between client and server (re-exports types from `db/schema`).
-- `db/` — Drizzle ORM: `schema.ts`, `relations.ts`, `seed.ts`, `migrations/` (MySQL).
+- `db/` — Drizzle ORM: `schema.ts`, `relations.ts`, `seed.ts`, `migrations/` (PostgreSQL).
 - `src/` — frontend: `main.tsx`, `App.tsx` (react-router: `/`, `/login`,
   `/dashboard/{runners,memory,settings}`), `pages/`, `components/ui/` (shadcn, 40+
   components), `hooks/`, `providers/trpc.tsx`.
@@ -116,8 +116,9 @@ Requirements: Rust stable, Node 18+, Tauri 2 system dependencies.
   config (tseslint recommended + react-hooks + react-refresh). tRPC procedures go
   through `publicQuery` / `authedQuery` / `adminQuery` from `api/middleware.ts`;
   transformer — superjson. UI — shadcn components from `@/components/ui`.
-- **DB schema** (`app/db/schema.ts`): PKs are `serial()`; FKs referencing serial PKs
-  must be `bigint("col", { mode: "number", unsigned: true })`. Enums — `mysqlEnum`.
+- **DB schema** (`app/db/schema.ts`): PostgreSQL (drizzle pg-core). PKs are `serial()`;
+  FKs referencing serial PKs use `integer("col")`. Enums — `pgEnum`, declared at the
+  top of the file.
 - **Cloud ↔ runner protocol is a double mirror**: `runner/crates/farol-core/src/protocol.rs`
   (serde, `#[serde(tag = "type", rename_all = "snake_case")]`) and
   `cloud/app/protocol.py` (pydantic) must change in lockstep; snake_case tags and

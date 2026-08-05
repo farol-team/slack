@@ -66,7 +66,7 @@ export const workspaceRouter = createRouter({
       const [ws] = await db
         .insert(workspaces)
         .values({ ownerUserId: ctx.user.id, name: input.name, ovAccountId })
-        .$returningId();
+        .returning({ id: workspaces.id });
       await db.insert(workspaceMembers).values({
         workspaceId: ws.id,
         userId: ctx.user.id,
@@ -128,7 +128,7 @@ export const runnerRouter = createRouter({
           label: input.label,
           tokenHash: sha256(token),
         })
-        .$returningId();
+        .returning({ id: runners.id });
       return { id: r.id, token };
     }),
 
