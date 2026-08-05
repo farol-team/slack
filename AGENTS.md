@@ -50,7 +50,7 @@ OpenViking MCP endpoint via `AssignTask.memory`.
 
 ### cloud/ (Python 3.12)
 - `app/protocol.py` — pydantic protocol models, mirror of `protocol.rs`.
-- `app/task_router.py` — runner registry and task lifecycle (in-memory).
+- `app/chat_router.py` — ChatRouter: chats (thread = conversation), turns, runner registry (in-memory).
 - `app/slack_app.py` — Slack Bolt: mentions, Approve/Deny/Stop buttons, IngestionBuffer.
 - `app/memory.py` — OpenViking HTTP client (trusted mode: identity via
   `X-OpenViking-*` headers). `app/importer.py` — channel history import.
