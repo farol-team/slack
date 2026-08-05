@@ -6,8 +6,21 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import {
+  Collapsible,
+  CollapsibleContent,
+  CollapsibleTrigger,
+} from "@/components/ui/collapsible";
 import { useState } from "react";
-import { Plus, Copy, Trash2, CheckCircle2 } from "lucide-react";
+import { Plus, Copy, Trash2, CheckCircle2, Download, ChevronRight } from "lucide-react";
+
+const RELEASE_BASE =
+  "https://github.com/farol-team/slack/releases/latest/download";
+const DOWNLOADS = [
+  { label: "macOS (Apple Silicon)", url: `${RELEASE_BASE}/farol-runner-darwin-arm64` },
+  { label: "macOS (Intel)", url: `${RELEASE_BASE}/farol-runner-darwin-x64` },
+  { label: "Linux (x64)", url: `${RELEASE_BASE}/farol-runner-linux-x64` },
+];
 
 export default function Runners() {
   const sel = useOutletContext<WorkspaceSelection>();
@@ -43,29 +56,24 @@ export default function Runners() {
       </p>
 
       <Card>
-        <CardHeader><CardTitle>New token</CardTitle></CardHeader>
-        <CardContent className="flex gap-3">
-          <Input placeholder="Label (e.g. macbook-irina)" value={label} onChange={(e) => setLabel(e.target.value)} />
-          <Button disabled={!label.trim() || createToken.isPending}
-            onClick={() => createToken.mutate({ workspaceId: wsId, label: label.trim() })}>
-            <Plus className="h-4 w-4 mr-2" /> Create
-          </Button>
+        <CardHeader><CardTitle>Add a runner</CardTitle></CardHeader>
+        <CardContent className="space-y-3">
+          <p className="text-sm text-muted-foreground">
+            Download the app and launch it — it opens this dashboard in your
+            browser, and you approve the connection with one click. Mentions of
+            the bot run on your own runner, so every teammate installs their own.
+          </p>
+          <div className="flex flex-wrap gap-2">
+            {DOWNLOADS.map((d) => (
+              <Button key={d.url} variant="outline" size="sm" asChild>
+                <a href={d.url}>
+                  <Download className="h-4 w-4 mr-2" /> {d.label}
+                </a>
+              </Button>
+            ))}
+          </div>
         </CardContent>
       </Card>
-
-      {issued && (
-        <Card className="border-primary">
-          <CardHeader><CardTitle className="text-base">Token created — shown only once</CardTitle></CardHeader>
-          <CardContent className="space-y-3">
-            <pre className="bg-muted p-3 rounded-md text-xs break-all">{issued}</pre>
-            <Button variant="outline" size="sm"
-              onClick={() => { navigator.clipboard.writeText(issued); setCopied(true); setTimeout(() => setCopied(false), 1500); }}>
-              {copied ? <CheckCircle2 className="h-4 w-4 mr-2" /> : <Copy className="h-4 w-4 mr-2" />}
-              {copied ? "Copied" : "Copy"}
-            </Button>
-          </CardContent>
-        </Card>
-      )}
 
       <Card>
         <CardHeader><CardTitle>Active</CardTitle></CardHeader>
@@ -105,6 +113,45 @@ export default function Runners() {
           </Table>
         </CardContent>
       </Card>
+
+      <Collapsible>
+        <CollapsibleTrigger className="group flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground">
+          <ChevronRight className="h-4 w-4 transition-transform group-data-[state=open]:rotate-90" />
+          Advanced: headless / CI token
+        </CollapsibleTrigger>
+        <CollapsibleContent className="pt-3 space-y-4">
+          <Card>
+            <CardHeader><CardTitle className="text-base">New token</CardTitle></CardHeader>
+            <CardContent className="space-y-3">
+              <p className="text-sm text-muted-foreground">
+                For machines without a browser (servers, CI): create a token and
+                pass it to the headless runner via <code>FAROL_RUNNER_TOKEN</code>.
+              </p>
+              <div className="flex gap-3">
+                <Input placeholder="Label (e.g. ci-build-agent)" value={label} onChange={(e) => setLabel(e.target.value)} />
+                <Button disabled={!label.trim() || createToken.isPending}
+                  onClick={() => createToken.mutate({ workspaceId: wsId, label: label.trim() })}>
+                  <Plus className="h-4 w-4 mr-2" /> Create
+                </Button>
+              </div>
+            </CardContent>
+          </Card>
+
+          {issued && (
+            <Card className="border-primary">
+              <CardHeader><CardTitle className="text-base">Token created — shown only once</CardTitle></CardHeader>
+              <CardContent className="space-y-3">
+                <pre className="bg-muted p-3 rounded-md text-xs break-all">{issued}</pre>
+                <Button variant="outline" size="sm"
+                  onClick={() => { navigator.clipboard.writeText(issued); setCopied(true); setTimeout(() => setCopied(false), 1500); }}>
+                  {copied ? <CheckCircle2 className="h-4 w-4 mr-2" /> : <Copy className="h-4 w-4 mr-2" />}
+                  {copied ? "Copied" : "Copy"}
+                </Button>
+              </CardContent>
+            </Card>
+          )}
+        </CollapsibleContent>
+      </Collapsible>
     </div>
   );
 }
