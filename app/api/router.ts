@@ -1,6 +1,12 @@
 import { authRouter } from "./auth-router";
 import { createRouter, publicQuery } from "./middleware";
-import { billingRouter, memoryRouter, runnerRouter, workspaceRouter } from "./saas-router";
+import {
+  billingRouter,
+  chatSyncRouter,
+  memoryRouter,
+  runnerRouter,
+  workspaceRouter,
+} from "./saas-router";
 import { slackRouter } from "./slack-oauth";
 
 export const appRouter = createRouter({
@@ -11,6 +17,7 @@ export const appRouter = createRouter({
   memory: memoryRouter,
   billing: billingRouter,
   slack: slackRouter,
+  chatSync: chatSyncRouter,
 });
 
 export type AppRouter = typeof appRouter;

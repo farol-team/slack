@@ -2,6 +2,7 @@ import { createHash, randomBytes } from "node:crypto";
 import { getDb } from "./queries/connection";
 import {
   channels,
+  chats,
   runners,
   tasks,
   workspaceMembers,
@@ -203,6 +204,118 @@ export const runnerRouter = createRouter({
         userKey: owner.ovUserKey ?? "",
         runnerId: r.id,
       };
+    }),
+});
+
+// ---------------------------------------------------------------------------
+// Chat mirror (INTERNAL: cloud -> SaaS persistence of chats and turns)
+// ---------------------------------------------------------------------------
+
+function requireInternalHeader(ctx: { req: { headers: Headers } }) {
+  const secret = ctx.req.headers.get("x-internal-secret") ?? "";
+  if (!INTERNAL_SECRET || secret !== INTERNAL_SECRET) {
+    throw new TRPCError({ code: "UNAUTHORIZED" });
+  }
+}
+
+export const chatSyncRouter = createRouter({
+  /** Chat opened in the cloud: persist its identity and bindings. */
+  upsert: publicQuery
+    .input(
+      z.object({
+        chatUuid: z.string(),
+        ovAccountId: z.string(),
+        ownerUserKey: z.string(),
+        slackChannelId: z.string(),
+        threadTs: z.string(),
+      }),
+    )
+    .mutation(async ({ ctx, input }) => {
+      requireInternalHeader(ctx);
+      const db = getDb();
+      const [ws] = await db
+        .select()
+        .from(workspaces)
+        .where(eq(workspaces.ovAccountId, input.ovAccountId))
+        .limit(1);
+      if (!ws) throw new TRPCError({ code: "NOT_FOUND", message: "workspace" });
+      const [owner] = await db
+        .select()
+        .from(workspaceMembers)
+        .where(
+          and(
+            eq(workspaceMembers.workspaceId, ws.id),
+            eq(workspaceMembers.ovUserKey, input.ownerUserKey),
+          ),
+        )
+        .limit(1);
+      const [existing] = await db
+        .select()
+        .from(chats)
+        .where(eq(chats.chatUuid, input.chatUuid))
+        .limit(1);
+      if (!existing) {
+        await db.insert(chats).values({
+          chatUuid: input.chatUuid,
+          workspaceId: ws.id,
+          ownerMemberId: owner?.id,
+          slackChannelId: input.slackChannelId,
+          threadTs: input.threadTs,
+        });
+      }
+      return { ok: true };
+    }),
+
+  /** Turn lifecycle: `running` inserts the turn, terminal states close it
+   *  and fold the session id into the chat. */
+  turn: publicQuery
+    .input(
+      z.object({
+        chatUuid: z.string(),
+        taskUuid: z.string(),
+        status: z.enum(["running", "done", "failed", "cancelled", "orphaned"]),
+        prompt: z.string().optional(),
+        runnerId: z.number().optional(),
+        acpSessionId: z.string().optional(),
+        error: z.string().optional(),
+      }),
+    )
+    .mutation(async ({ ctx, input }) => {
+      requireInternalHeader(ctx);
+      const db = getDb();
+      const [chat] = await db
+        .select()
+        .from(chats)
+        .where(eq(chats.chatUuid, input.chatUuid))
+        .limit(1);
+      if (!chat) throw new TRPCError({ code: "NOT_FOUND", message: "chat" });
+      if (input.status === "running") {
+        await db.insert(tasks).values({
+          taskUuid: input.taskUuid,
+          chatId: chat.id,
+          workspaceId: chat.workspaceId,
+          runnerId: input.runnerId || null,
+          prompt: input.prompt ?? "",
+        });
+        await db.update(chats).set({ status: "running" }).where(eq(chats.id, chat.id));
+      } else {
+        await db
+          .update(tasks)
+          .set({
+            status: input.status,
+            error: input.error ?? null,
+            finishedAt: new Date(),
+          })
+          .where(eq(tasks.taskUuid, input.taskUuid));
+        await db
+          .update(chats)
+          .set({
+            status: "idle",
+            ...(input.acpSessionId ? { acpSessionId: input.acpSessionId } : {}),
+          })
+          .where(eq(chats.id, chat.id));
+      }
+      return { ok: true };
     }),
 });
 

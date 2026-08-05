@@ -98,20 +98,47 @@ export const channels = mysqlTable("channels", {
 });
 export type Channel = typeof channels.$inferSelect;
 
+/** A conversation: one Slack thread bound to an owner and an ACP session.
+ *  Mirrored from the cloud (source of truth for live state). */
+export const chats = mysqlTable("chats", {
+  id: serial("id").primaryKey(),
+  /** Cloud-side chat id (UUID). */
+  chatUuid: varchar("chatUuid", { length: 36 }).notNull().unique(),
+  workspaceId: bigint("workspaceId", { mode: "number", unsigned: true })
+    .notNull()
+    .references(() => workspaces.id),
+  ownerMemberId: bigint("ownerMemberId", { mode: "number", unsigned: true })
+    .references(() => workspaceMembers.id),
+  slackChannelId: varchar("slackChannelId", { length: 64 }).notNull(),
+  threadTs: varchar("threadTs", { length: 32 }).notNull(),
+  acpSessionId: varchar("acpSessionId", { length: 128 }),
+  status: mysqlEnum("status", ["idle", "running"]).default("idle").notNull(),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  lastActivityAt: timestamp("lastActivityAt")
+    .defaultNow()
+    .notNull()
+    .$onUpdate(() => new Date()),
+});
+export type Chat = typeof chats.$inferSelect;
+
+/** One turn of a chat: prompt -> result. */
 export const tasks = mysqlTable("tasks", {
   id: serial("id").primaryKey(),
+  /** Cloud-side task id (UUID). */
+  taskUuid: varchar("taskUuid", { length: 36 }).notNull().unique(),
+  chatId: bigint("chatId", { mode: "number", unsigned: true })
+    .notNull()
+    .references(() => chats.id),
   workspaceId: bigint("workspaceId", { mode: "number", unsigned: true })
     .notNull()
     .references(() => workspaces.id),
   runnerId: bigint("runnerId", { mode: "number", unsigned: true })
     .references(() => runners.id),
-  slackChannelId: varchar("slackChannelId", { length: 64 }).notNull(),
-  threadTs: varchar("threadTs", { length: 32 }).notNull(),
   prompt: text("prompt").notNull(),
-  status: mysqlEnum("status", ["running", "done", "failed", "cancelled"])
+  status: mysqlEnum("status", ["running", "done", "failed", "cancelled", "orphaned"])
     .default("running")
     .notNull(),
-  acpSessionId: varchar("acpSessionId", { length: 128 }),
+  error: text("error"),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
   finishedAt: timestamp("finishedAt"),
 });

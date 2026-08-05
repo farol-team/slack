@@ -5,6 +5,7 @@ The wire protocol stays task-based — chats exist only cloud-side."""
 
 from __future__ import annotations
 
+import asyncio
 import json
 import os
 import time
@@ -133,6 +134,10 @@ class ChatRouter:
                 task.chat.status = "idle"
                 task.chat.current_task_id = None
                 self.tasks.pop(task.task_id, None)
+                self._mirror("chatSync.turn", {
+                    "chatUuid": str(task.chat.chat_id),
+                    "taskUuid": str(task.task_id), "status": "orphaned",
+                })
                 if slack is not None:
                     try:
                         await slack.flush(task)
@@ -153,6 +158,26 @@ class ChatRouter:
                 return r
         return None
 
+    # ---------- SaaS mirror (fire-and-forget persistence) ----------
+
+    @staticmethod
+    def _mirror(procedure: str, payload: dict) -> None:
+        """Persist a chat/turn event in the SaaS without blocking the
+        hot path; a lost mirror write only degrades the dashboard."""
+        async def send() -> None:
+            try:
+                saas_url = os.environ["FAROL_SAAS_URL"].rstrip("/")
+                async with httpx.AsyncClient(timeout=10) as client:
+                    await client.post(
+                        f"{saas_url}/api/trpc/{procedure}",
+                        json={"json": payload},
+                        headers={"x-internal-secret":
+                                 os.environ["INTERNAL_API_SECRET"]},
+                    )
+            except Exception:
+                log.warning("saas mirror %s failed", procedure)
+        asyncio.create_task(send())
+
     # ---------- chat / turn lifecycle ----------
 
     def get_chat(self, channel: str, thread_ts: str) -> Optional[Chat]:
@@ -166,6 +191,11 @@ class ChatRouter:
                     workspace_id=workspace_id, user_key=user_key,
                     cwd=cwd, agent=agent)
         self.chats[(channel, thread_ts)] = chat
+        self._mirror("chatSync.upsert", {
+            "chatUuid": str(chat.chat_id), "ovAccountId": workspace_id,
+            "ownerUserKey": user_key, "slackChannelId": channel,
+            "threadTs": thread_ts,
+        })
         return chat
 
     async def start_turn(self, chat: Chat, runner: Runner, prompt: str,
@@ -185,6 +215,11 @@ class ChatRouter:
         log.info("turn %s of chat %s (%s#%s)%s", task.task_id, chat.chat_id,
                  chat.slack_channel, chat.thread_ts,
                  " [resume]" if chat.session_id else "")
+        self._mirror("chatSync.turn", {
+            "chatUuid": str(chat.chat_id), "taskUuid": str(task.task_id),
+            "status": "running", "prompt": prompt,
+            "runnerId": runner.runner_id,
+        })
         return task
 
     async def on_task_event(self, ev: p.TaskEvent, slack) -> None:
@@ -219,6 +254,12 @@ class ChatRouter:
             chat.session_id = res.session_id
         chat.status = "idle"
         chat.current_task_id = None
+        self._mirror("chatSync.turn", {
+            "chatUuid": str(chat.chat_id), "taskUuid": str(task.task_id),
+            "status": task.status,
+            **({"acpSessionId": res.session_id} if res.session_id else {}),
+            **({"error": res.error} if res.error else {}),
+        })
         await slack.post_result(task, res)
         slack.cleanup(task)
 

@@ -8,6 +8,21 @@ CREATE TABLE `channels` (
 	CONSTRAINT `channels_id` PRIMARY KEY(`id`)
 );
 --> statement-breakpoint
+CREATE TABLE `chats` (
+	`id` serial AUTO_INCREMENT NOT NULL,
+	`chatUuid` varchar(36) NOT NULL,
+	`workspaceId` bigint unsigned NOT NULL,
+	`ownerMemberId` bigint unsigned,
+	`slackChannelId` varchar(64) NOT NULL,
+	`threadTs` varchar(32) NOT NULL,
+	`acpSessionId` varchar(128),
+	`status` enum('idle','running') NOT NULL DEFAULT 'idle',
+	`createdAt` timestamp NOT NULL DEFAULT (now()),
+	`lastActivityAt` timestamp NOT NULL DEFAULT (now()),
+	CONSTRAINT `chats_id` PRIMARY KEY(`id`),
+	CONSTRAINT `chats_chatUuid_unique` UNIQUE(`chatUuid`)
+);
+--> statement-breakpoint
 CREATE TABLE `runners` (
 	`id` serial AUTO_INCREMENT NOT NULL,
 	`workspaceId` bigint unsigned NOT NULL,
@@ -51,16 +66,17 @@ CREATE TABLE `slack_oauth_states` (
 --> statement-breakpoint
 CREATE TABLE `tasks` (
 	`id` serial AUTO_INCREMENT NOT NULL,
+	`taskUuid` varchar(36) NOT NULL,
+	`chatId` bigint unsigned NOT NULL,
 	`workspaceId` bigint unsigned NOT NULL,
 	`runnerId` bigint unsigned,
-	`slackChannelId` varchar(64) NOT NULL,
-	`threadTs` varchar(32) NOT NULL,
 	`prompt` text NOT NULL,
-	`status` enum('running','done','failed','cancelled') NOT NULL DEFAULT 'running',
-	`acpSessionId` varchar(128),
+	`status` enum('running','done','failed','cancelled','orphaned') NOT NULL DEFAULT 'running',
+	`error` text,
 	`createdAt` timestamp NOT NULL DEFAULT (now()),
 	`finishedAt` timestamp,
-	CONSTRAINT `tasks_id` PRIMARY KEY(`id`)
+	CONSTRAINT `tasks_id` PRIMARY KEY(`id`),
+	CONSTRAINT `tasks_taskUuid_unique` UNIQUE(`taskUuid`)
 );
 --> statement-breakpoint
 CREATE TABLE `users` (
@@ -102,12 +118,15 @@ CREATE TABLE `workspaces` (
 );
 --> statement-breakpoint
 ALTER TABLE `channels` ADD CONSTRAINT `channels_workspaceId_workspaces_id_fk` FOREIGN KEY (`workspaceId`) REFERENCES `workspaces`(`id`) ON DELETE no action ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE `chats` ADD CONSTRAINT `chats_workspaceId_workspaces_id_fk` FOREIGN KEY (`workspaceId`) REFERENCES `workspaces`(`id`) ON DELETE no action ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE `chats` ADD CONSTRAINT `chats_ownerMemberId_workspace_members_id_fk` FOREIGN KEY (`ownerMemberId`) REFERENCES `workspace_members`(`id`) ON DELETE no action ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE `runners` ADD CONSTRAINT `runners_workspaceId_workspaces_id_fk` FOREIGN KEY (`workspaceId`) REFERENCES `workspaces`(`id`) ON DELETE no action ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE `runners` ADD CONSTRAINT `runners_ownerMemberId_workspace_members_id_fk` FOREIGN KEY (`ownerMemberId`) REFERENCES `workspace_members`(`id`) ON DELETE no action ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE `slack_installations` ADD CONSTRAINT `slack_installations_workspaceId_workspaces_id_fk` FOREIGN KEY (`workspaceId`) REFERENCES `workspaces`(`id`) ON DELETE no action ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE `slack_installations` ADD CONSTRAINT `slack_installations_installedByUserId_users_id_fk` FOREIGN KEY (`installedByUserId`) REFERENCES `users`(`id`) ON DELETE no action ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE `slack_oauth_states` ADD CONSTRAINT `slack_oauth_states_workspaceId_workspaces_id_fk` FOREIGN KEY (`workspaceId`) REFERENCES `workspaces`(`id`) ON DELETE no action ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE `slack_oauth_states` ADD CONSTRAINT `slack_oauth_states_userId_users_id_fk` FOREIGN KEY (`userId`) REFERENCES `users`(`id`) ON DELETE no action ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE `tasks` ADD CONSTRAINT `tasks_chatId_chats_id_fk` FOREIGN KEY (`chatId`) REFERENCES `chats`(`id`) ON DELETE no action ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE `tasks` ADD CONSTRAINT `tasks_workspaceId_workspaces_id_fk` FOREIGN KEY (`workspaceId`) REFERENCES `workspaces`(`id`) ON DELETE no action ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE `tasks` ADD CONSTRAINT `tasks_runnerId_runners_id_fk` FOREIGN KEY (`runnerId`) REFERENCES `runners`(`id`) ON DELETE no action ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE `workspace_members` ADD CONSTRAINT `workspace_members_workspaceId_workspaces_id_fk` FOREIGN KEY (`workspaceId`) REFERENCES `workspaces`(`id`) ON DELETE no action ON UPDATE no action;--> statement-breakpoint

@@ -1,7 +1,7 @@
 {
   "version": "5",
   "dialect": "mysql",
-  "id": "ceab445e-f906-4272-be9a-91e6c13fef03",
+  "id": "ee418f58-5398-40b4-ae96-7207ecb292df",
   "prevId": "00000000-0000-0000-0000-000000000000",
   "tables": {
     "channels": {
@@ -77,6 +77,130 @@
         }
       },
       "uniqueConstraints": {},
+      "checkConstraint": {}
+    },
+    "chats": {
+      "name": "chats",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "serial",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": true
+        },
+        "chatUuid": {
+          "name": "chatUuid",
+          "type": "varchar(36)",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "workspaceId": {
+          "name": "workspaceId",
+          "type": "bigint unsigned",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "ownerMemberId": {
+          "name": "ownerMemberId",
+          "type": "bigint unsigned",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "slackChannelId": {
+          "name": "slackChannelId",
+          "type": "varchar(64)",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "threadTs": {
+          "name": "threadTs",
+          "type": "varchar(32)",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "acpSessionId": {
+          "name": "acpSessionId",
+          "type": "varchar(128)",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "status": {
+          "name": "status",
+          "type": "enum('idle','running')",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": "'idle'"
+        },
+        "createdAt": {
+          "name": "createdAt",
+          "type": "timestamp",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": "(now())"
+        },
+        "lastActivityAt": {
+          "name": "lastActivityAt",
+          "type": "timestamp",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": "(now())"
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "chats_workspaceId_workspaces_id_fk": {
+          "name": "chats_workspaceId_workspaces_id_fk",
+          "tableFrom": "chats",
+          "tableTo": "workspaces",
+          "columnsFrom": [
+            "workspaceId"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "chats_ownerMemberId_workspace_members_id_fk": {
+          "name": "chats_ownerMemberId_workspace_members_id_fk",
+          "tableFrom": "chats",
+          "tableTo": "workspace_members",
+          "columnsFrom": [
+            "ownerMemberId"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {
+        "chats_id": {
+          "name": "chats_id",
+          "columns": [
+            "id"
+          ]
+        }
+      },
+      "uniqueConstraints": {
+        "chats_chatUuid_unique": {
+          "name": "chats_chatUuid_unique",
+          "columns": [
+            "chatUuid"
+          ]
+        }
+      },
       "checkConstraint": {}
     },
     "runners": {
@@ -428,6 +552,20 @@
           "notNull": true,
           "autoincrement": true
         },
+        "taskUuid": {
+          "name": "taskUuid",
+          "type": "varchar(36)",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "chatId": {
+          "name": "chatId",
+          "type": "bigint unsigned",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
         "workspaceId": {
           "name": "workspaceId",
           "type": "bigint unsigned",
@@ -442,20 +580,6 @@
           "notNull": false,
           "autoincrement": false
         },
-        "slackChannelId": {
-          "name": "slackChannelId",
-          "type": "varchar(64)",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "threadTs": {
-          "name": "threadTs",
-          "type": "varchar(32)",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
         "prompt": {
           "name": "prompt",
           "type": "text",
@@ -465,15 +589,15 @@
         },
         "status": {
           "name": "status",
-          "type": "enum('running','done','failed','cancelled')",
+          "type": "enum('running','done','failed','cancelled','orphaned')",
           "primaryKey": false,
           "notNull": true,
           "autoincrement": false,
           "default": "'running'"
         },
-        "acpSessionId": {
-          "name": "acpSessionId",
-          "type": "varchar(128)",
+        "error": {
+          "name": "error",
+          "type": "text",
           "primaryKey": false,
           "notNull": false,
           "autoincrement": false
@@ -496,6 +620,19 @@
       },
       "indexes": {},
       "foreignKeys": {
+        "tasks_chatId_chats_id_fk": {
+          "name": "tasks_chatId_chats_id_fk",
+          "tableFrom": "tasks",
+          "tableTo": "chats",
+          "columnsFrom": [
+            "chatId"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
         "tasks_workspaceId_workspaces_id_fk": {
           "name": "tasks_workspaceId_workspaces_id_fk",
           "tableFrom": "tasks",
@@ -531,7 +668,14 @@
           ]
         }
       },
-      "uniqueConstraints": {},
+      "uniqueConstraints": {
+        "tasks_taskUuid_unique": {
+          "name": "tasks_taskUuid_unique",
+          "columns": [
+            "taskUuid"
+          ]
+        }
+      },
       "checkConstraint": {}
     },
     "users": {
