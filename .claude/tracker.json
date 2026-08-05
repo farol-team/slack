@@ -59,8 +59,8 @@
   "targets": {
     "app": {
       "repo_root": ".",
-      "worktree_root": ".gilb/worktrees",
-      "worker_log_dir": ".gilb/worker-logs",
+      "worktree_root": ".flow/worktrees",
+      "worker_log_dir": ".flow/worker-logs",
       "branch_prefix": "flow/",
       "toolchain": "node",
       "test_cmd": "cd app && npm test",
@@ -68,8 +68,8 @@
     },
     "cloud": {
       "repo_root": ".",
-      "worktree_root": ".gilb/worktrees",
-      "worker_log_dir": ".gilb/worker-logs",
+      "worktree_root": ".flow/worktrees",
+      "worker_log_dir": ".flow/worker-logs",
       "branch_prefix": "flow/",
       "toolchain": "python",
       "test_cmd": "cd cloud && python -m compileall -q app",
@@ -77,8 +77,8 @@
     },
     "runner": {
       "repo_root": ".",
-      "worktree_root": ".gilb/worktrees",
-      "worker_log_dir": ".gilb/worker-logs",
+      "worktree_root": ".flow/worktrees",
+      "worker_log_dir": ".flow/worker-logs",
       "branch_prefix": "flow/",
       "toolchain": "rust",
       "test_cmd": "cd runner && cargo test --workspace",
@@ -89,7 +89,7 @@
     "CLAUDE.md",
     "AGENTS.md"
   ],
-  "session_log": ".gilb/session-log.md",
+  "session_log": ".flow/session-log.md",
   "learnings": ".claude/learnings.jsonl",
   "comment_prefixes": {
     "meta": "[meta] ",
