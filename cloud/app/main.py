@@ -94,7 +94,8 @@ async def touch_runner(runner) -> None:
         async with httpx.AsyncClient(timeout=10) as client:
             await client.post(
                 f"{FAROL_SAAS_URL}/api/trpc/runner.touch",
-                json={"json": {"runnerId": runner.runner_id}},
+                json={"json": {"runnerId": runner.runner_id,
+                               "secret": INTERNAL_API_SECRET}},
                 headers={"x-internal-secret": INTERNAL_API_SECRET},
             )
     except Exception:

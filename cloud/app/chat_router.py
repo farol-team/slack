@@ -167,6 +167,7 @@ class ChatRouter:
         async def send() -> None:
             try:
                 saas_url = os.environ["FAROL_SAAS_URL"].rstrip("/")
+                payload["secret"] = os.environ["INTERNAL_API_SECRET"]
                 async with httpx.AsyncClient(timeout=10) as client:
                     await client.post(
                         f"{saas_url}/api/trpc/{procedure}",

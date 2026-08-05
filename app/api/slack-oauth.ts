@@ -12,6 +12,7 @@ import { and, eq, gt } from "drizzle-orm";
 import { TRPCError } from "@trpc/server";
 import { z } from "zod";
 import { authedQuery, createRouter, publicQuery } from "./middleware";
+import { requireInternal } from "./saas-router";
 
 const SLACK_CLIENT_ID = process.env.SLACK_CLIENT_ID ?? "";
 const SLACK_CLIENT_SECRET = process.env.SLACK_CLIENT_SECRET ?? "";
@@ -77,12 +78,9 @@ export const slackRouter = createRouter({
   /** INTERNAL for cloud: bot token by Slack team id.
    *  Guarded by a shared secret header. */
   installationByTeam: publicQuery
-    .input(z.object({ teamId: z.string() }))
+    .input(z.object({ teamId: z.string(), secret: z.string().optional() }))
     .query(async ({ ctx, input }) => {
-      const secret = ctx.req.headers.get("x-internal-secret") ?? "";
-      if (!INTERNAL_SECRET || secret !== INTERNAL_SECRET) {
-        throw new TRPCError({ code: "UNAUTHORIZED" });
-      }
+      requireInternal(ctx, input.secret);
       const db = getDb();
       const [inst] = await db
         .select()
@@ -111,13 +109,11 @@ export const slackRouter = createRouter({
         teamId: z.string(),
         slackUserId: z.string(),
         email: z.string().email().optional(),
+        secret: z.string().optional(),
       }),
     )
     .query(async ({ ctx, input }) => {
-      const secret = ctx.req.headers.get("x-internal-secret") ?? "";
-      if (!INTERNAL_SECRET || secret !== INTERNAL_SECRET) {
-        throw new TRPCError({ code: "UNAUTHORIZED" });
-      }
+      requireInternal(ctx, input.secret);
       const db = getDb();
       const [ws] = await db
         .select()

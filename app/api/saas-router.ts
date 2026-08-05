@@ -163,12 +163,9 @@ export const runnerRouter = createRouter({
 
   /** INTERNAL: cloud reports runner liveness (throttled heartbeat). */
   touch: publicQuery
-    .input(z.object({ runnerId: z.number() }))
+    .input(z.object({ runnerId: z.number(), secret: z.string().optional() }))
     .mutation(async ({ ctx, input }) => {
-      const secret = ctx.req.headers.get("x-internal-secret") ?? "";
-      if (!INTERNAL_SECRET || secret !== INTERNAL_SECRET) {
-        throw new TRPCError({ code: "UNAUTHORIZED" });
-      }
+      requireInternal(ctx, input.secret);
       const db = getDb();
       await db
         .update(runners)
@@ -211,11 +208,18 @@ export const runnerRouter = createRouter({
 // Chat mirror (INTERNAL: cloud -> SaaS persistence of chats and turns)
 // ---------------------------------------------------------------------------
 
-function requireInternalHeader(ctx: { req: { headers: Headers } }) {
-  const secret = ctx.req.headers.get("x-internal-secret") ?? "";
-  if (!INTERNAL_SECRET || secret !== INTERNAL_SECRET) {
-    throw new TRPCError({ code: "UNAUTHORIZED" });
-  }
+/** Yandex serverless ingress strips custom request headers, so internal
+ *  calls carry the shared secret in the payload; the header is still
+ *  accepted as an alternative for local/dev curl convenience. */
+export function requireInternal(
+  ctx: { req: { headers: Headers } },
+  provided?: string,
+) {
+  const header = ctx.req.headers.get("x-internal-secret") ?? "";
+  const ok =
+    INTERNAL_SECRET &&
+    (provided === INTERNAL_SECRET || header === INTERNAL_SECRET);
+  if (!ok) throw new TRPCError({ code: "UNAUTHORIZED" });
 }
 
 export const chatSyncRouter = createRouter({
@@ -228,10 +232,11 @@ export const chatSyncRouter = createRouter({
         ownerUserKey: z.string(),
         slackChannelId: z.string(),
         threadTs: z.string(),
+        secret: z.string().optional(),
       }),
     )
     .mutation(async ({ ctx, input }) => {
-      requireInternalHeader(ctx);
+      requireInternal(ctx, input.secret);
       const db = getDb();
       const [ws] = await db
         .select()
@@ -278,10 +283,11 @@ export const chatSyncRouter = createRouter({
         runnerId: z.number().optional(),
         acpSessionId: z.string().optional(),
         error: z.string().optional(),
+        secret: z.string().optional(),
       }),
     )
     .mutation(async ({ ctx, input }) => {
-      requireInternalHeader(ctx);
+      requireInternal(ctx, input.secret);
       const db = getDb();
       const [chat] = await db
         .select()

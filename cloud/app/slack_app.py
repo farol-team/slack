@@ -38,9 +38,12 @@ def make_installation_resolver(saas_url: str, internal_secret: str,
         if hit and time.monotonic() - hit[0] < ttl_secs:
             return hit[1]
         async with httpx.AsyncClient(timeout=10) as client:
+            # Serverless ingress strips custom headers — the secret rides
+            # in the payload (the header stays for direct/dev setups).
             res = await client.get(
                 f"{saas_url}/api/trpc/slack.installationByTeam",
-                params={"input": json.dumps({"json": {"teamId": team_id}})},
+                params={"input": json.dumps({"json": {
+                    "teamId": team_id, "secret": internal_secret}})},
                 headers={"x-internal-secret": internal_secret},
             )
         data = res.json().get("result", {}).get("data", {}).get("json", {})
@@ -65,7 +68,8 @@ def make_member_resolver(saas_url: str, internal_secret: str, resolve_installati
 
     async def query(team_id: str, slack_user_id: str,
                     email: Optional[str]) -> Optional[str]:
-        payload: dict = {"teamId": team_id, "slackUserId": slack_user_id}
+        payload: dict = {"teamId": team_id, "slackUserId": slack_user_id,
+                         "secret": internal_secret}
         if email:
             payload["email"] = email
         async with httpx.AsyncClient(timeout=10) as client:
