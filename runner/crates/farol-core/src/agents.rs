@@ -3,6 +3,7 @@
 //! here reaches the machine, and nothing here installs anything.
 
 use std::path::{Path, PathBuf};
+use std::sync::OnceLock;
 
 /// An adapter this project has pinned. A person may still name any command
 /// they like in config.json; a profile is what lets the app say something
@@ -59,9 +60,46 @@ pub fn profile_for(name: &str) -> Option<&'static AgentProfile> {
     BASELINE.iter().find(|p| p.name == name)
 }
 
+/// The PATH a person's terminal would have. An app launched from Finder or the
+/// dock inherits a bare one — no Homebrew, no nvm — so `npm`, and the `node`
+/// an adapter's shebang resolves, are both invisible until the login shell is
+/// asked. Answered once: starting a shell is not free.
+pub fn login_path() -> Option<String> {
+    static CACHE: OnceLock<Option<String>> = OnceLock::new();
+    CACHE
+        .get_or_init(|| {
+            let shell = std::env::var("SHELL").unwrap_or_else(|_| "/bin/sh".into());
+            let out = std::process::Command::new(shell)
+                .args(["-ilc", "printf %s \"$PATH\""])
+                .stdin(std::process::Stdio::null())
+                .output()
+                .ok()?;
+            let path = String::from_utf8_lossy(&out.stdout).trim().to_string();
+            (!path.is_empty()).then_some(path)
+        })
+        .clone()
+}
+
+/// PATH to hand a child process: the runner's own bin dir first, then whatever
+/// the person's shell would have had, then this process's own.
+pub fn spawn_path(prefix: Option<&Path>) -> String {
+    let mut parts: Vec<String> = Vec::new();
+    if let Some(p) = prefix {
+        parts.push(p.join("bin").display().to_string());
+    }
+    if let Some(p) = login_path() {
+        parts.push(p);
+    }
+    if let Some(p) = std::env::var_os("PATH").and_then(|p| p.into_string().ok()) {
+        parts.push(p);
+    }
+    parts.join(":")
+}
+
 /// Where the machine says the command is — the runner's own prefix first, then
-/// PATH — or None for nowhere. One question, asked of the machine: an adapter
-/// this project pinned is in exactly the state one it never heard of would be.
+/// the shell's PATH — or None for nowhere. One question, asked of the machine:
+/// an adapter this project pinned is in exactly the state one it never heard
+/// of would be.
 pub fn resolve(command: &str, prefix: Option<&Path>) -> Option<PathBuf> {
     if let Some(p) = prefix {
         let candidate = p.join("bin").join(command);
@@ -69,8 +107,7 @@ pub fn resolve(command: &str, prefix: Option<&Path>) -> Option<PathBuf> {
             return Some(candidate);
         }
     }
-    let path = std::env::var_os("PATH")?;
-    std::env::split_paths(&path)
+    std::env::split_paths(&spawn_path(prefix))
         .map(|dir| dir.join(command))
         .find(|c| c.is_file())
 }

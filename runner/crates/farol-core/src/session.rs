@@ -67,7 +67,12 @@ impl SessionManager {
 
         // Env injection for the memory layer: agents that support
         // OpenViking pick it up via MCP server config in session/new.
-        let env: Vec<(String, String)> = vec![];
+        // PATH is not decoration: an adapter's shebang resolves `node` through
+        // it, and a desktop app's own PATH has neither Homebrew nor nvm in it.
+        let env: Vec<(String, String)> = vec![(
+            "PATH".to_string(),
+            crate::agents::spawn_path(None),
+        )];
 
         let client = match AcpClient::spawn(&agent.command, &agent.args, &cwd, &env, ev_tx).await {
             Ok(c) => c,

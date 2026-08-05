@@ -18,7 +18,6 @@ const RELEASE_BASE =
   "https://github.com/farol-team/slack/releases/latest/download";
 const DOWNLOADS = [
   { label: "macOS", url: `${RELEASE_BASE}/farol-runner-macos.dmg` },
-  { label: "Linux (x64)", url: `${RELEASE_BASE}/farol-runner-linux-x64` },
 ];
 
 export default function Runners() {
@@ -142,7 +141,7 @@ export default function Runners() {
               <pre className="bg-muted p-3 rounded-md text-xs overflow-x-auto">
 {`export FAROL_RUNNER_TOKEN=frl_...
 export FAROL_ALLOWED_CWDS=$HOME/projects   # dirs the agent may touch
-./farol-runner-linux-x64`}
+./farol-runner-darwin-arm64`}
               </pre>
               <p className="text-sm text-muted-foreground">
                 The coding agent is a separate program the runner talks to over

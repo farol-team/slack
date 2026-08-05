@@ -29,7 +29,6 @@ const RELEASE_BASE =
   "https://github.com/farol-team/slack/releases/latest/download";
 const RUNNER_DOWNLOADS = {
   mac: `${RELEASE_BASE}/farol-runner-macos.dmg`,
-  linux: `${RELEASE_BASE}/farol-runner-linux-x64`,
 };
 
 const ONLINE_WINDOW_MS = 2 * 60 * 1000;
@@ -113,7 +112,7 @@ export default function Dashboard() {
     overview?.channels.find((c) => c.slackChannelId === id)?.name ?? id;
 
   const runSnippet =
-    "chmod +x farol-runner-*\n./farol-runner-<your-platform>";
+    "Open the .dmg, drag Farol Runner to Applications,\nlaunch it and press “Authorize this machine”.";
   const mentionSnippet = "@farol summarize what this team decided this week";
 
   return (
@@ -256,10 +255,8 @@ export default function Dashboard() {
                         <Download className="h-4 w-4 mr-2" /> Download for macOS
                       </a>
                     </Button>
-                    <Button variant="outline" size="sm" asChild>
-                      <a href={RUNNER_DOWNLOADS.linux} download>
-                        <Download className="h-4 w-4 mr-2" /> Linux x64
-                      </a>
+                    <Button variant="outline" size="sm" disabled>
+                      <Download className="h-4 w-4 mr-2" /> Linux — soon
                     </Button>
                     <Button variant="outline" size="sm" disabled>
                       <Download className="h-4 w-4 mr-2" /> Windows — soon

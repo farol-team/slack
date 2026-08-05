@@ -203,13 +203,19 @@ async fn install_agent(app: AppHandle, name: String) -> Result<AgentRow, String>
         .ok_or_else(|| format!("unknown agent: {name}"))?;
     let prefix = agents_prefix(&app)?;
 
-    let output = tokio::process::Command::new("npm")
+    // A .app launched from Finder has a bare PATH — npm lives in Homebrew or
+    // nvm, neither of which is in it. Ask the login shell where things are.
+    let path = farol_core::agents::spawn_path(Some(&prefix));
+    let npm = farol_core::agents::resolve("npm", None)
+        .ok_or_else(|| "npm was not found on this machine — install Node.js first".to_string())?;
+    let output = tokio::process::Command::new(&npm)
         .args(["install", "-g", "--prefix"])
         .arg(&prefix)
         .arg(profile.package)
+        .env("PATH", &path)
         .output()
         .await
-        .map_err(|e| format!("npm is required to install adapters: {e}"))?;
+        .map_err(|e| format!("could not run {}: {e}", npm.display()))?;
     if !output.status.success() {
         return Err(String::from_utf8_lossy(&output.stderr)
             .lines()
