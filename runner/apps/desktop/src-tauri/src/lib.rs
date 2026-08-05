@@ -37,7 +37,6 @@ struct RunnerStatus {
     connected: bool,
     workspace_id: Option<String>,
     logged_in: bool,
-    active_tasks: u32,
     agents: Vec<String>,
 }
 
@@ -54,7 +53,6 @@ impl Default for RunnerStatus {
             connected: false,
             workspace_id: None,
             logged_in: RunnerConfig::token().ok().flatten().is_some(),
-            active_tasks: 0,
             agents: vec![],
         }
     }
@@ -372,8 +370,6 @@ async fn handle_cloud_message(app: AppHandle, msg: CloudMessage) {
 pub fn run() {
 
     tauri::Builder::default()
-        .plugin(tauri_plugin_autostart::Builder::new().build())
-        .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_opener::init())
         .manage(AppState {
             status: RwLock::new(RunnerStatus::default()),

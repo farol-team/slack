@@ -25,7 +25,6 @@ services:
       INTERNAL_API_SECRET: ${INTERNAL_API_SECRET}
       OPENVIKING_URL: http://openviking:1933
       OPENVIKING_ROOT_KEY: ${OPENVIKING_ROOT_KEY}
-      DEFAULT_CWD: ${DEFAULT_CWD:-/home/user/projects}
     depends_on:
       - openviking
 

@@ -194,6 +194,6 @@ jobs:
             Applications and launch it. Signed and notarized, so it opens
             without Gatekeeper warnings.
 
-            **Headless binaries** (servers, CI, Linux) — download the one for
-            your platform, `chmod +x` it and run; it prints a URL that
-            authorizes the runner in the browser.
+            **Headless binaries** (servers, CI) — macOS arm64 and x64 for now;
+            `chmod +x` and run, and it prints a URL that authorizes the runner
+            in the browser.

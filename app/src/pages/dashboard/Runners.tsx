@@ -140,8 +140,11 @@ export default function Runners() {
             <CardContent className="space-y-3">
               <pre className="bg-muted p-3 rounded-md text-xs overflow-x-auto">
 {`export FAROL_RUNNER_TOKEN=frl_...
-export FAROL_ALLOWED_CWDS=$HOME/projects   # dirs the agent may touch
-./farol-runner-darwin-arm64`}
+./farol-runner-darwin-arm64
+
+# Each channel works in its own folder under ~/Farol. To let the agent
+# into folders you already have, add them:
+export FAROL_ALLOWED_CWDS=$HOME/projects`}
               </pre>
               <p className="text-sm text-muted-foreground">
                 The coding agent is a separate program the runner talks to over

@@ -317,8 +317,7 @@ class IngestionBuffer:
 # ---------------------------------------------------------------------------
 
 def register_handlers(app: AsyncApp, renderer: SlackRenderer,
-                      ingestion: IngestionBuffer, default_cwd: str,
-                      build_memory,
+                      ingestion: IngestionBuffer, build_memory,
                       resolve_installation, resolve_member) -> None:
     resolve_channel_name = make_channel_name_resolver(resolve_installation)
 
@@ -383,7 +382,7 @@ def register_handlers(app: AsyncApp, renderer: SlackRenderer,
             inst = await resolve_installation(team_id)
             chat = router.open_chat(
                 slack_team=team_id, channel=channel, thread_ts=thread_ts,
-                workspace_id=workspace, user_key=user_key, cwd=default_cwd,
+                workspace_id=workspace, user_key=user_key,
                 workspace_name=inst.get("team_name") or "",
                 channel_name=await resolve_channel_name(team_id, channel))
 

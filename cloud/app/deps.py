@@ -47,7 +47,7 @@ def build_memory(account: str, user_key: str, channel: str) -> p.MemoryConfig:
 
 
 bolt = create_bolt(config.SLACK_SIGNING_SECRET, authorize_fn)
-register_handlers(bolt, renderer, ingestion, config.DEFAULT_CWD,
+register_handlers(bolt, renderer, ingestion,
                   build_memory=build_memory,
                   resolve_installation=resolve_installation,
                   resolve_member=resolve_member)

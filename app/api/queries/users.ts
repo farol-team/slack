@@ -1,4 +1,4 @@
-import { and, eq } from "drizzle-orm";
+import { eq } from "drizzle-orm";
 import * as schema from "@db/schema";
 import { getDb } from "./connection";
 import { env } from "../lib/env";
@@ -8,23 +8,6 @@ export async function findUserById(id: number) {
     .select()
     .from(schema.users)
     .where(eq(schema.users.id, id))
-    .limit(1);
-  return rows.at(0);
-}
-
-export async function findUserByProviderSubject(
-  provider: string,
-  subject: string
-) {
-  const rows = await getDb()
-    .select()
-    .from(schema.users)
-    .where(
-      and(
-        eq(schema.users.provider, provider),
-        eq(schema.users.subject, subject)
-      )
-    )
     .limit(1);
   return rows.at(0);
 }

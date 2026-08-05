@@ -13,7 +13,7 @@ Slack ──Events API──► cloud (Python/FastAPI) ──wss──► runner
      ◄──render to thread──      ▲                            │ spawn
                                 │ tRPC (x-internal-secret)   ▼
                           app/ (SaaS panel,           local agent via ACP
-                          React + Hono + PostgreSQL)       (claude/gemini --acp, stdio)
+                          React + Hono + PostgreSQL)       (claude-agent-acp / opencode acp, stdio)
 ```
 
 - **`app/`** — SaaS control plane: React 19 + Vite frontend, Hono + tRPC backend, PostgreSQL via Drizzle, Kimi OAuth. Stores workspaces, runners, channels, tasks, and Slack installations (bot tokens).
@@ -53,7 +53,7 @@ docker compose up --build      # service on :8000 + OpenViking sidecar on :1933
 cargo check                    # from runner/ — checks the core
 cd apps/desktop && npm install
 npm run dev                    # cargo tauri dev
-npm run build                  # cargo tauri build (.app/.msi/.deb)
+npm run build                  # cargo tauri build (.app + .dmg; macOS only for now)
 # headless runner for E2E dev (no Tauri UI):
 FAROL_RUNNER_TOKEN=frl_... cargo run -p farol-core --example headless
 ```
@@ -65,11 +65,11 @@ Minimal pre-submit check: `npm run check` + `npm run lint` (app), `cargo check` 
 ## Conventions
 
 - **Doc/comment language:** English everywhere. Legacy comments in `cloud/` and `runner/` may still be in Russian — translate opportunistically when touching them.
-- **app/**: path aliases `@/* → src/*`, `@contracts/* → contracts/*`, `@db/* → db/*`. tRPC procedures go through `publicQuery` / `authedQuery` / `adminQuery` from `api/middleware.ts`; transformer is superjson. UI uses shadcn components from `@/components/ui` (40+ available). Prettier: double quotes, semicolons, es5 trailing commas, width 80.
+- **app/**: path aliases `@/* → src/*`, `@contracts/* → contracts/*`, `@db/* → db/*`. tRPC procedures go through `publicQuery` / `authedQuery` from `api/middleware.ts`; transformer is superjson. UI uses shadcn components from `@/components/ui` (40+ available). Prettier: double quotes, semicolons, es5 trailing commas, width 80.
 - **DB schema** (`app/db/schema.ts`): PostgreSQL (drizzle pg-core). PKs are `serial()`; FKs referencing serial PKs use `integer("col")`. Enums are declared with `pgEnum` at the top of the file.
 - **Key server files** (`app/api/`): `boot.ts` (Hono entry), `router.ts` (root tRPC router: `auth`, `workspace`, `runner`, `memory`, `billing`, `slack`), `saas-router.ts` (domain logic), `slack-oauth.ts` ("Add to Slack" OAuth v2).
 - **Key cloud files** (`cloud/app/`): `main.py` (FastAPI: `/runner/v1` WS, `/slack/events`, `/memory/mcp`, `/internal/*` behind `x-internal-secret`, `/healthz`), `slack_app.py` (mentions, follow-up turns, Approve/Deny/Stop buttons, IngestionBuffer), `chat_router.py` (ChatRouter: Chat = Slack thread owning the ACP session; Turn = one conversational turn; the wire protocol stays task-based (a wire task is one Turn)), `gateway.py`, `memory.py` (OpenViking HTTP client).
-- **Key runner files** (`runner/crates/farol-core/src/`): `protocol.rs`, `acp.rs` (ACP client), `cloud.rs` (WS loop with reconnect/backoff), `session.rs` (SessionManager), `config.rs` (config + OS keychain for token).
+- **Key runner files** (`runner/crates/farol-core/src/`): `protocol.rs`, `acp.rs` (ACP client), `cloud.rs` (WS loop with reconnect/backoff), `session.rs` (SessionManager), `config.rs` (config + OS keychain for token), `agents.rs` (pinned ACP adapters, PATH resolution), `workspace.rs` (`~/Farol/<workspace>/<channel>` derivation), `connect.rs` (browser handoff).
 
 ## Testing
 

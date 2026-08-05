@@ -123,16 +123,3 @@ pub fn is_installed(command: &str, prefix: Option<&Path>) -> bool {
     resolve(command, prefix).is_some()
 }
 
-/// The one command installing this adapter would run.
-///
-/// Into a prefix the runner owns, never the person's own node installation:
-/// what Farol fetches, Farol keeps to itself. The prefix is quoted because the
-/// app data directory on macOS has a space in it, and an unquoted one reads as
-/// another package to install.
-pub fn install_command(profile: &AgentProfile, prefix: &Path) -> String {
-    format!(
-        "npm install -g --prefix \"{}\" {}",
-        prefix.display(),
-        profile.package
-    )
-}

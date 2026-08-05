@@ -3,7 +3,7 @@
 Product framing:
 
 - **Bring Your Own Agent (BYOA)**: every developer connects their own machine with their
-  own coding agent (Claude Code, Gemini CLI, …). A mention runs on the mentioner's runner,
+  own coding agent (Claude Code, Codex, OpenCode, …). A mention runs on the mentioner's runner,
   under the mentioner's identity.
 - **Shared Slack memory with Slack-shaped access**: the team's Slack history is the shared
   memory. A user's agent can read exactly the memory of the channels that user can read in
@@ -37,31 +37,34 @@ work.
 ## Epic B — Bring Your Own Agent (role: developer)
 
 **B1. Install the runner** — 🟡
-As a developer, I download a signed desktop app that lives in the tray and auto-starts.
-*Code: Tauri app builds; signing/auto-update (`tauri-plugin-updater`) missing.*
+As a developer, I download a signed desktop app that lives in the tray.
+*Code: signed and notarized .dmg from `runner-release.yml`. Missing: auto-update
+(`tauri-plugin-updater`), start-on-login, and Windows/Linux builds.*
 
-**B2. Connect the runner to the workspace** — ✅ (MVP-grade)
-As a developer, I create a runner token in the dashboard (shown once, stored hashed),
-paste it into the runner, and it connects outbound — zero open ports; the token lives in
-the OS keychain.
-*Code: `runner.createToken`/`runner.validate`, keychain in config.rs. Later: OAuth device flow.*
+**B2. Connect the runner to the workspace** — ✅
+As a developer, I press "Connect to Slack" in the runner, approve it in the browser, and
+it connects outbound — zero open ports; the token lives in the OS keychain.
+*Code: browser handoff in `connect.rs` + `runner-connect.ts`, `runner.connectApprove`,
+`runner.validate`. A dashboard token stays available for headless machines.*
 
-**B3. Agent auto-detection** — ❌
-As a developer, the runner should detect my installed agents (`which claude`, `which
-gemini`) so I don't hand-edit config.json.
+**B3. Agent auto-detection** — ✅
+As a developer, the runner finds the adapters I have and installs one on a press, so I
+never hand-edit config.json.
+*Code: pinned catalog in `agents.rs`, `is_installed` resolution through the login-shell
+PATH, `install_agent` IPC; only installed adapters are announced in `hello`.*
 
 **B4. Allowed project folders** — ✅
 As a developer, I choose which local directories agents may work in; anything else is
 rejected by my machine, not by the cloud.
-*Code: `add_allowed_cwd` IPC + `is_cwd_allowed` gate in session.rs.*
+*Code: `is_cwd_allowed` gate in config.rs, called from session.rs before spawn.*
 
-**B5. My mention → my runner → my agent** — ❌ (P0, core of BYOA)
+**B5. My mention → my runner → my agent** — ✅
 As a developer, when **I** mention the bot, the task runs on **my** runner with **my**
 agent. If I have no runner connected, the bot tells me how to set one up — it must never
 run my task on a teammate's machine.
-*Gap: routing today picks the first runner in the workspace; also the workspace-id
-mismatch bug (`pick_runner(team_id)` vs runners registered by `ovAccountId`) breaks
-routing entirely in SaaS mode. Requires a Slack user ↔ SaaS user ↔ runner mapping.*
+*Code: `pick_runner(workspace, user_key=…)`; the Slack author resolves to a member via
+the stored `slackUserId` link or by email (`slack.memberByTeamUser`), and runners
+register under that member's key.*
 
 ---
 
@@ -81,9 +84,10 @@ tool-call/plan status replies — without flooding the channel.
 As a user, when my agent wants to do something destructive, I get Approve/Deny buttons in
 the thread; my click resolves the agent's pending permission request on my machine.
 
-**C4. Stop a task** — 🟡
+**C4. Stop a task** — ✅
 As a user, I press Stop and the task ends **and the agent process on my machine dies**.
-*Gap: cancel sends `session/cancel` but never kills the process or cleans up task state.*
+*Code: `handle_cancel` sends `session/cancel`, shuts the ACP client down and drops the
+task entry.*
 
 **C5. Resume a session** — ✅
 As a user, I continue a finished task by replying in the same thread; the agent resumes
@@ -91,12 +95,15 @@ with full context (`session/load` with the stored session_id).
 *Done via the Chat model: a thread is a Chat owning the ACP session; a plain reply by
 the chat owner starts a new turn with `resume_session`. Only the owner drives their runner.*
 
-**C6. Pick the project** — ❌ (P0)
-As a user, I choose which of my allowed folders the task runs in (per-channel default in
-the dashboard + override in the mention), instead of a single global `DEFAULT_CWD` env.
+**C6. Pick the project** — 🟡
+As a user, work from a channel lands in a folder I recognise, and I can point a channel
+at a repository I already have.
+*Done: the runner derives `~/Farol/<workspace>/<channel>` and creates it; the cloud sends
+names, not paths. Gap: `bindings` (channel → existing folder) has no UI yet, and a
+mention cannot override the folder.*
 
 **C7. Pick the agent** — 🟡
-As a user with several agents (claude, gemini), I choose which one handles a task;
+As a user with several agents (claude-agent-acp, codex-acp, opencode acp), I choose which one handles a task;
 default is per-runner.
 *Protocol supports `agent`; no UX for choosing.*
 

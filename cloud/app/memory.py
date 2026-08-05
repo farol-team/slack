@@ -101,29 +101,4 @@ class OpenVikingClient:
 
     # ---------- retrieval (dashboard / debugging) ----------
 
-    async def find(self, account_id: str, user_id: str, query: str,
-                   target_uri: Optional[str] = None,
-                   limit: int = 10) -> dict[str, Any]:
-        res = await self._client.post(
-            "/api/v1/search/find",
-            json={"query": query,
-                  "target_uri": target_uri or "viking://resources/",
-                  "limit": limit},
-            headers=self._tenant(account_id, user_id),
-        )
-        res.raise_for_status()
-        return res.json()
 
-    # ---------- sessions -> memory ----------
-
-    async def commit_session(self, account_id: str, user_id: str,
-                             messages: list[dict]) -> dict:
-        """Commit a finished Slack thread so OpenViking extracts
-        long-term memories (preferences, decisions, patterns)."""
-        res = await self._client.post(
-            "/api/v1/sessions/commit",
-            json={"messages": messages},
-            headers=self._tenant(account_id, user_id),
-        )
-        res.raise_for_status()
-        return res.json()

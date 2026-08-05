@@ -22,7 +22,8 @@ app/
 ```
 @app_mention in a thread (opens a Chat; replies are follow-up turns)
   → ChatRouter.start_turn() → AssignTurn (WS) → the author's own runner (BYOA)
-  → runner spawns `agent --acp` (cwd checked against the allowlist on the client)
+  → runner spawns the ACP adapter in the folder it derives for that channel
+    (~/Farol/<workspace>/<channel>, checked against the allowlist on the client)
   → TurnEvents stream back:
       agent_message_chunk → chat_update of a single message (≤1 edit/sec, rate-limit safe)
       tool_call / plan    → status replies in the thread
@@ -84,12 +85,13 @@ manifest (replace `request_url` with your tunnel).
 |---|---|---|
 | Runner auth | random `frl_*` token, SHA-256 hash in SaaS DB | OAuth device flow, key rotation |
 | Task state | in-memory (`TaskRouter`) | Postgres + Redis streams |
-| Routing | first runner in the workspace | Slack user → runner mapping |
+| Routing | BYOA: the mention author's own runner | shared/pool runners, fallback |
 | Slack streaming | edit 1×/sec | `chat.startStream` API |
 | OpenViking | single server, account isolation | per-enterprise instances |
 
 ## Relationship with the runner
 
-Full cycle: Slack mention → this service → `wss` → runner (Rust) →
-`claude --acp` locally → events back → rendered in the thread. The contract is
-verified by round-trip serialization on both sides.
+Full cycle: Slack mention → this service → `wss` → runner (Rust) → a local ACP
+adapter (`claude-agent-acp`, `codex-acp`, `opencode acp`) → events back →
+rendered in the thread. The contract is verified by round-trip serialization on
+both sides.

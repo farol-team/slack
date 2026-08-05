@@ -112,7 +112,7 @@ export default function Dashboard() {
     overview?.channels.find((c) => c.slackChannelId === id)?.name ?? id;
 
   const runSnippet =
-    "Open the .dmg, drag Farol Runner to Applications,\nlaunch it and press “Authorize this machine”.";
+    "Open the .dmg, drag Farol Runner to Applications,\nlaunch it and press “Connect to Slack”.";
   const mentionSnippet = "@farol summarize what this team decided this week";
 
   return (

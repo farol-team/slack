@@ -34,13 +34,6 @@ pub struct RunnerConfig {
     /// (security boundary!).
     #[serde(default)]
     pub allowed_cwds: Vec<PathBuf>,
-    /// Auto-start on login (Tauri side reads this).
-    #[serde(default = "default_true")]
-    pub autostart: bool,
-}
-
-fn default_true() -> bool {
-    true
 }
 
 fn default_saas_url() -> String {
@@ -73,7 +66,6 @@ impl Default for RunnerConfig {
             root_dir: crate::workspace::default_root(),
             bindings: std::collections::HashMap::new(),
             allowed_cwds: vec![],
-            autostart: true,
         }
     }
 }

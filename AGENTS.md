@@ -11,7 +11,7 @@ agent on a developer's machine, while team memory is stored in OpenViking.
       ◄──render to thread──     ▲                            │ spawn
                                 │ tRPC (x-internal-secret)   ▼
                           app/ (SaaS panel,           local agent
-                          React + Hono + PostgreSQL)       claude/gemini --acp (stdio)
+                          React + Hono + PostgreSQL)       claude-agent-acp / opencode acp (stdio)
 ```
 
 - **`app/`** — SaaS control plane: web UI on React 19 + Vite, backend on
@@ -38,7 +38,7 @@ OpenViking MCP endpoint via `AssignTurn.memory`.
 ### app/ (TypeScript, Node 20, ESM)
 - `api/` — server side: `boot.ts` (Hono entry point), `router.ts` (root tRPC
   router: `auth`, `workspace`, `runner`, `memory`, `billing`, `slack`),
-  `middleware.ts` (`publicQuery`/`authedQuery`/`adminQuery` procedures),
+  `middleware.ts` (`publicQuery`/`authedQuery` procedures),
   `saas-router.ts` (SaaS domain logic), `slack-oauth.ts` (OAuth v2 "Add to Slack"),
   `identity/` (Slack OIDC sign-in + session), `queries/` (DB access), `lib/` (env, cookies, vite integration).
 - `contracts/` — types/constants shared between client and server (re-exports types from `db/schema`).
@@ -68,7 +68,7 @@ OpenViking MCP endpoint via `AssignTurn.memory`.
 - `crates/farol-core/examples/headless.rs` — headless runner without the Tauri UI
   (dev debugging and E2E tests).
 - `apps/desktop/` — Tauri 2: `ui/index.html` (no bundler, withGlobalTauri),
-  `src-tauri/` (tray, IPC commands, autostart).
+  `src-tauri/` (tray, IPC commands, adapter install).
 
 ## Build and test commands
 
@@ -98,7 +98,7 @@ docker compose up --build   # brings up the service on :8000 + OpenViking on :19
 cargo check                        # check the core (from runner/ root)
 cd apps/desktop && npm install
 npm run dev                        # cargo tauri dev
-npm run build                      # cargo tauri build (.app/.msi/.deb)
+npm run build                      # cargo tauri build (.app + .dmg; macOS only for now)
 
 # headless runner without the Tauri UI (for dev/E2E):
 FAROL_RUNNER_TOKEN=frl_... cargo run -p farol-core --example headless
@@ -115,7 +115,7 @@ Requirements: Rust stable, Node 18+, Tauri 2 system dependencies.
   when touching them.)
 - **app/**: Prettier (double quotes, semi, trailing comma es5, width 80), ESLint flat
   config (tseslint recommended + react-hooks + react-refresh). tRPC procedures go
-  through `publicQuery` / `authedQuery` / `adminQuery` from `api/middleware.ts`;
+  through `publicQuery` / `authedQuery` from `api/middleware.ts`;
   transformer — superjson. UI — shadcn components from `@/components/ui`.
 - **DB schema** (`app/db/schema.ts`): PostgreSQL (drizzle pg-core). PKs are `serial()`;
   FKs referencing serial PKs use `integer("col")`. Enums — `pgEnum`, declared at the
@@ -146,7 +146,7 @@ Requirements: Rust stable, Node 18+, Tauri 2 system dependencies.
 - The [farol-team/agent-flow](https://github.com/farol-team/agent-flow) kit
   drives the pipeline: `/flow-check` triages backlog issues into PLANs, a
   human approves by swapping the label to `flow:ready`, `/flow-run` executes
-  in an isolated worktree under `.gilb/worktrees/` (gitignored).
+  in an isolated worktree under `.flow/worktrees/` (gitignored).
 - Kit files (`.claude/{commands,prompts,hooks,bin,providers}`) are synced
   from the canonical repo via `bin/workflow-kit-sync` and pinned by
   `.claude/KIT_REVISION` — never edit them in this repo; CI
@@ -166,7 +166,7 @@ Requirements: Rust stable, Node 18+, Tauri 2 system dependencies.
 - Slack bot tokens are stored in `slack_installations` (note in code: encrypt via KMS
   in production). Internal SaaS ↔ cloud calls are protected by the
   `x-internal-secret` header (`INTERNAL_API_SECRET`).
-- On the runner, `allowed_cwds` is a hard allowlist of task directories; destructive
+- On the runner, the directory allowlist is `root_dir` (`~/Farol`, where `<workspace>/<channel>` folders are derived) plus channel `bindings` and extra `allowed_cwds`; destructive
   agent actions are confirmed via Approve/Deny buttons in Slack.
 - Slack OAuth state — one-time tokens in `slack_oauth_states` (CSRF protection).
 
@@ -184,6 +184,7 @@ Requirements: Rust stable, Node 18+, Tauri 2 system dependencies.
 
 ## Known MVP limitations (from cloud/README.md)
 
-Task state is in-memory (`TaskRouter`) (production: Postgres + Redis); routing picks
-the first runner in a workspace; Slack streaming is 1 edit/sec (production:
+Task state is in-memory (`TaskRouter`) (production: Postgres + Redis); routing is
+BYOA — a mention runs on its author's own runner, matched by the stored
+`slackUserId` link or by email; Slack streaming is 1 edit/sec (production:
 `chat.startStream`); a single OpenViking server with account isolation.

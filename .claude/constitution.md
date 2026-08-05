@@ -108,6 +108,8 @@ via `slack.installationByTeam` with `x-internal-secret`.
 the security model is zero open ports + hard cwd allowlist + human
 approval for destructive actions.)*
 Never add a listening socket to the runner. Task directories are checked
-against `allowed_cwds` before spawn — no bypass flag, no "temporary"
-exception. Destructive agent actions keep the Approve/Deny round-trip
-through Slack.
+by `is_cwd_allowed` before spawn — the runner's own `root_dir`, a channel
+binding, or an explicitly added folder, and nothing else. No bypass flag,
+no "temporary" exception, and no fallback that quietly widens the set (the
+old "empty allowlist means $HOME" was exactly that). Destructive agent
+actions keep the Approve/Deny round-trip through Slack.

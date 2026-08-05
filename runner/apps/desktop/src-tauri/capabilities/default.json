@@ -7,8 +7,6 @@
   ],
   "permissions": [
     "core:default",
-    "dialog:allow-open",
-    "opener:default",
-    "autostart:default"
+    "opener:default"
   ]
 }

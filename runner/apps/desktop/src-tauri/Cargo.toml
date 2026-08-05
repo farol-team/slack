@@ -9,8 +9,6 @@ tauri-build = { version = "2", features = [] }
 [dependencies]
 farol-core = { path = "../../../crates/farol-core" }
 tauri = { version = "2", features = ["tray-icon"] }
-tauri-plugin-autostart = "2"
-tauri-plugin-dialog = "2"
 tauri-plugin-opener = "2"
 hostname = "0.4"
 serde = { version = "1", features = ["derive"] }

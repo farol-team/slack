@@ -129,13 +129,6 @@ def parse_runner_message(raw: dict) -> RunnerMessage:
     return model.model_validate(raw)
 
 
-class CloudOutbound(BaseModel):
-    """Serializable outbound frame helper."""
-    message: CloudMessage
-
-    def dump(self) -> str:
-        return self.message.model_dump_json(exclude_none=True)
-
 
 def encode(msg: CloudMessage) -> str:
     return msg.model_dump_json(exclude_none=True)

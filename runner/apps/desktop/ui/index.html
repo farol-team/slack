@@ -30,7 +30,6 @@
       <span><span id="conn-dot" class="dot idle"></span><span id="conn-text">—</span></span></div>
     <div class="row"><span>Workspace</span><span id="ws">—</span></div>
     <div class="row"><span>Agents</span><span id="agents">—</span></div>
-    <div class="row"><span>Active tasks</span><span id="tasks">0</span></div>
     <div class="row"><span>Work folder</span><span id="root">—</span></div>
   </div>
 
@@ -67,7 +66,6 @@
     document.getElementById('conn-text').textContent = s.connected ? 'Connected' : 'Offline';
     document.getElementById('ws').textContent = s.workspace_id || '—';
     document.getElementById('agents').textContent = s.agents.join(', ') || '—';
-    document.getElementById('tasks').textContent = s.active_tasks;
     document.getElementById('version').textContent = 'v' + s.version;
     const root = document.getElementById('root');
     root.textContent = (s.root || '—').replace(/^\/Users\/[^/]+/, '~').replace(/^\/home\/[^/]+/, '~');
