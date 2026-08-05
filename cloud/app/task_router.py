@@ -5,9 +5,9 @@ The wire protocol stays task-based — chats exist only cloud-side."""
 
 from __future__ import annotations
 
-import asyncio
 import json
 import os
+import time
 import httpx
 import logging
 from dataclasses import dataclass, field
@@ -29,6 +29,9 @@ class Runner:
     workspace_id: str
     agents: list[str] = field(default_factory=list)
     runner_version: str = ""
+    runner_id: int = 0       # SaaS row id, for liveness reporting
+    last_seen: float = field(default_factory=time.monotonic)
+    last_touch: float = 0.0  # last lastSeenAt report to the SaaS
 
 
 @dataclass
@@ -111,12 +114,16 @@ class ChatRouter:
             return None
 
         runner = Runner(ws=ws, user_key=user_key, workspace_id=workspace_id,
-                        agents=hello.agents, runner_version=hello.runner_version)
+                        agents=hello.agents, runner_version=hello.runner_version,
+                        runner_id=data.get("runnerId", 0))
         self.runners[hello.token] = runner
         log.info("runner registered: ws=%s agents=%s", workspace_id, hello.agents)
         return runner
 
-    def unregister(self, runner: Runner) -> None:
+    async def unregister(self, runner: Runner, slack=None) -> None:
+        """Drop a disconnected runner. Its running turns are orphaned:
+        the thread is told, buffered stream tail is flushed, the chat
+        goes idle so a later reply can retry."""
         for token, r in list(self.runners.items()):
             if r is runner:
                 del self.runners[token]
@@ -124,6 +131,18 @@ class ChatRouter:
             if task.runner is runner and task.status == "running":
                 task.status = "orphaned"
                 task.chat.status = "idle"
+                task.chat.current_task_id = None
+                self.tasks.pop(task.task_id, None)
+                if slack is not None:
+                    try:
+                        await slack.flush(task)
+                        await slack.post_status(
+                            task, ":warning: Runner disconnected — the task "
+                                  "was interrupted. Reply in this thread to "
+                                  "retry once it reconnects.")
+                        slack.cleanup(task)
+                    except Exception:
+                        log.exception("orphan notify failed")
         log.info("runner unregistered: ws=%s", runner.workspace_id)
 
     def pick_runner(self, workspace_id: str, user_key: Optional[str] = None) -> Optional[Runner]:

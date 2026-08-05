@@ -7,10 +7,14 @@
 
 from __future__ import annotations
 
+import asyncio
 import json
 import logging
 import os
+import time
 from contextlib import asynccontextmanager
+
+import httpx
 
 from fastapi import FastAPI, Request, WebSocket, WebSocketDisconnect
 from slack_bolt.adapter.fastapi.async_handler import AsyncSlackRequestHandler
@@ -79,10 +83,45 @@ register_handlers(bolt, renderer, ingestion, DEFAULT_CWD,
 slack_handler = AsyncSlackRequestHandler(bolt)
 
 
+async def touch_runner(runner) -> None:
+    """Throttled liveness report: refresh runners.lastSeenAt in the SaaS
+    at most once per 5 minutes per runner."""
+    now = time.monotonic()
+    if runner.runner_id == 0 or now - runner.last_touch < 300:
+        return
+    runner.last_touch = now
+    try:
+        async with httpx.AsyncClient(timeout=10) as client:
+            await client.post(
+                f"{FAROL_SAAS_URL}/api/trpc/runner.touch",
+                json={"json": {"runnerId": runner.runner_id}},
+                headers={"x-internal-secret": INTERNAL_API_SECRET},
+            )
+    except Exception:
+        log.warning("runner.touch failed for #%s", runner.runner_id)
+
+
+async def runner_watchdog() -> None:
+    """The runner pings every 25s; close connections silent for >90s so
+    their handlers unregister and threads get the orphan notice."""
+    while True:
+        await asyncio.sleep(60)
+        now = time.monotonic()
+        for runner in list(router.runners.values()):
+            if now - runner.last_seen > 90:
+                log.warning("runner ws=%s silent >90s, closing", runner.workspace_id)
+                try:
+                    await runner.ws.close(code=4008)
+                except Exception:
+                    pass
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     ingestion.start()
+    watchdog = asyncio.create_task(runner_watchdog())
     yield
+    watchdog.cancel()
     await ov_client.close()
 
 
@@ -174,11 +213,16 @@ async def runner_ws(ws: WebSocket):
                 if runner is None:
                     await ws.close(code=4001)
                     return
-            elif runner is None:
+                continue
+            if runner is None:
                 await ws.send_text(p.encode(p.Error(code="not_authed",
                                                     message="send hello first")))
-            elif isinstance(msg, p.Ping):
+                continue
+
+            runner.last_seen = time.monotonic()
+            if isinstance(msg, p.Ping):
                 await ws.send_text(p.encode(p.Pong()))
+                await touch_runner(runner)
             elif isinstance(msg, p.TaskEvent):
                 await router.on_task_event(msg, renderer)
             elif isinstance(msg, p.TaskResult):
@@ -187,4 +231,4 @@ async def runner_ws(ws: WebSocket):
         pass
     finally:
         if runner is not None:
-            router.unregister(runner)
+            await router.unregister(runner, renderer)

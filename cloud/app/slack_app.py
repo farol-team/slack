@@ -26,14 +26,17 @@ def create_bolt(signing_secret: str, authorize_fn) -> AsyncApp:
     return AsyncApp(signing_secret=signing_secret, authorize=authorize_fn)
 
 
-def make_installation_resolver(saas_url: str, internal_secret: str):
+def make_installation_resolver(saas_url: str, internal_secret: str,
+                               ttl_secs: float = 300.0):
     """Resolve Slack team -> SaaS installation {bot_token, ov_account_id}.
-    Cached per team."""
-    cache: dict[str, dict] = {}
+    Cached per team with a TTL so a reinstall (new bot token) is picked
+    up without restarting the service."""
+    cache: dict[str, tuple[float, dict]] = {}
 
     async def resolve(team_id: str) -> dict:
-        if team_id in cache:
-            return cache[team_id]
+        hit = cache.get(team_id)
+        if hit and time.monotonic() - hit[0] < ttl_secs:
+            return hit[1]
         async with httpx.AsyncClient(timeout=10) as client:
             res = await client.get(
                 f"{saas_url}/api/trpc/slack.installationByTeam",
@@ -47,7 +50,7 @@ def make_installation_resolver(saas_url: str, internal_secret: str):
             "bot_token": data["botToken"],
             "ov_account_id": data.get("ovAccountId") or team_id,
         }
-        cache[team_id] = inst
+        cache[team_id] = (time.monotonic(), inst)
         return inst
 
     return resolve
@@ -225,12 +228,24 @@ class IngestionBuffer:
         self.flush_secs = flush_secs
         self._buf: dict[str, list[str]] = defaultdict(list)
         self._workspace: dict[str, str] = {}   # channel -> account_id
+        self._seen: dict[str, float] = {}      # "channel:ts" -> monotonic
         self._task: Optional[asyncio.Task] = None
 
     def start(self) -> None:
         self._task = asyncio.create_task(self._flush_loop())
 
-    def add(self, workspace_id: str, channel: str, line: str) -> None:
+    def add(self, workspace_id: str, channel: str, line: str,
+            msg_ts: str = "") -> None:
+        # With several of our bots in one channel the same message event
+        # arrives once per bot — dedupe by (channel, ts).
+        if msg_ts:
+            key = f"{channel}:{msg_ts}"
+            if key in self._seen:
+                return
+            self._seen[key] = time.monotonic()
+            if len(self._seen) > 10000:
+                cutoff = time.monotonic() - 3600
+                self._seen = {k: v for k, v in self._seen.items() if v > cutoff}
         self._workspace[channel] = workspace_id
         self._buf[channel].append(line)
         if len(self._buf[channel]) >= self.max_batch:
@@ -346,7 +361,7 @@ def register_handlers(app: AsyncApp, renderer: SlackRenderer,
             log.exception("dropping message for unresolved team %s", team_id)
             return
         line = f"[{event['ts']}] <{event.get('user', '?')}>: {event.get('text', '')}"
-        ingestion.add(account, event["channel"], line)
+        ingestion.add(account, event["channel"], line, event["ts"])
 
         # Conversational follow-up: a plain reply in a thread whose chat
         # is idle continues the conversation (ACP session resume) on the

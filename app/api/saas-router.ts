@@ -16,6 +16,8 @@ function sha256(s: string) {
   return createHash("sha256").update(s).digest("hex");
 }
 
+const INTERNAL_SECRET = process.env.INTERNAL_API_SECRET ?? "";
+
 /** Resolve a workspace owned by (or shared with) the current user. */
 async function requireMembership(workspaceId: number, userId: number) {
   const db = getDb();
@@ -155,6 +157,22 @@ export const runnerRouter = createRouter({
       if (!r) throw new TRPCError({ code: "NOT_FOUND" });
       await requireMembership(r.workspaceId, ctx.user.id);
       await db.update(runners).set({ revokedAt: new Date() }).where(eq(runners.id, r.id));
+      return { ok: true };
+    }),
+
+  /** INTERNAL: cloud reports runner liveness (throttled heartbeat). */
+  touch: publicQuery
+    .input(z.object({ runnerId: z.number() }))
+    .mutation(async ({ ctx, input }) => {
+      const secret = ctx.req.headers.get("x-internal-secret") ?? "";
+      if (!INTERNAL_SECRET || secret !== INTERNAL_SECRET) {
+        throw new TRPCError({ code: "UNAUTHORIZED" });
+      }
+      const db = getDb();
+      await db
+        .update(runners)
+        .set({ lastSeenAt: new Date() })
+        .where(eq(runners.id, input.runnerId));
       return { ok: true };
     }),
 
