@@ -51,23 +51,6 @@ async fn get_status(state: State<'_, AppState>) -> Result<RunnerStatus, String> 
     Ok(s)
 }
 
-/// Fallback for machines the browser handoff cannot serve: the person pastes
-/// a runner token issued in the dashboard. `authorize_in_browser` is the way in.
-#[tauri::command]
-async fn save_runner_token(app: AppHandle, token: String) -> Result<(), String> {
-    tracing::info!("IPC save_runner_token: token_len={}", token.len());
-    match RunnerConfig::set_token(&token) {
-        Ok(()) => tracing::info!("IPC save_runner_token: keychain write OK"),
-        Err(e) => {
-            tracing::error!("IPC save_runner_token: keychain write FAILED: {e}");
-            return Err(e.to_string());
-        }
-    }
-    // (Re)start the cloud connection with the new token.
-    start_cloud(app, Some(token)).await;
-    Ok(())
-}
-
 /// Machine name used as the runner label in the SaaS connect flow.
 fn machine_label() -> String {
     hostname::get()
@@ -386,7 +369,6 @@ pub fn run() {
         })
         .invoke_handler(tauri::generate_handler![
             get_status,
-            save_runner_token,
             logout,
             add_allowed_cwd,
             authorize_in_browser,
