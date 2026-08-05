@@ -19,7 +19,7 @@ from . import protocol as p
 from .memory import OpenVikingClient
 from .slack_app import (IngestionBuffer, SlackRenderer, create_bolt,
                         make_authorize, make_installation_resolver,
-                        register_handlers)
+                        make_member_resolver, register_handlers)
 from .importer import ImportManager
 from .task_router import router
 
@@ -42,6 +42,8 @@ INTERNAL_API_SECRET = os.environ["INTERNAL_API_SECRET"]
 ov_client = OpenVikingClient(OPENVIKING_URL, OPENVIKING_ROOT_KEY)
 authorize_fn = make_authorize(FAROL_SAAS_URL, INTERNAL_API_SECRET)
 resolve_installation = make_installation_resolver(FAROL_SAAS_URL, INTERNAL_API_SECRET)
+resolve_member = make_member_resolver(FAROL_SAAS_URL, INTERNAL_API_SECRET,
+                                      resolve_installation)
 
 
 async def resolve_bot_token(team_id: str) -> str:
@@ -58,7 +60,8 @@ importer = ImportManager(ov_client, resolve_bot_token, resolve_ov_account)
 
 bolt = create_bolt(SLACK_SIGNING_SECRET, authorize_fn)
 register_handlers(bolt, renderer, ingestion, DEFAULT_CWD, MEMORY_MCP_URL,
-                  resolve_installation=resolve_installation)
+                  resolve_installation=resolve_installation,
+                  resolve_member=resolve_member)
 slack_handler = AsyncSlackRequestHandler(bolt)
 
 

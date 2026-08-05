@@ -18,6 +18,8 @@ oauth_config:
       - chat:write
       - groups:read
       - groups:history
+      - users:read
+      - users:read.email
 settings:
   event_subscriptions:
     request_url: https://REPLACE-ME.ngrok.io/slack/events

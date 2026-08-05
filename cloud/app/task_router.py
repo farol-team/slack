@@ -94,8 +94,8 @@ class TaskRouter:
         log.info("runner unregistered: ws=%s", runner.workspace_id)
 
     def pick_runner(self, workspace_id: str, user_key: Optional[str] = None) -> Optional[Runner]:
-        """Route a Slack task to a runner. MVP: the workspace owner's runner;
-        production: route by the Slack user who mentioned the bot."""
+        """Route a task to a runner. BYOA: pass the mention author's
+        user_key so the task lands on their own runner only."""
         for r in self.runners.values():
             if r.workspace_id == workspace_id and (user_key is None or r.user_key == user_key):
                 return r

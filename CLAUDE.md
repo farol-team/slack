@@ -84,4 +84,4 @@ Vitest is configured in `app/` (node environment, `api/**/*.test.ts|spec.ts`) bu
 
 ## Known MVP limitations
 
-Task state is in-memory (`TaskRouter`); routing picks the first runner in a workspace; Slack streaming is 1 edit/sec message updates; single OpenViking server with account isolation. Production targets for each are listed in `cloud/README.md`.
+Task state is in-memory (`TaskRouter`); Slack streaming is 1 edit/sec message updates; single OpenViking server with account isolation. Routing is BYOA: a mention runs only on the author's own runner (Slack user → member matched by stored `slackUserId` link or email via `slack.memberByTeamUser`). Production targets are listed in `cloud/README.md`.

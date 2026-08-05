@@ -109,17 +109,19 @@ export const workspaceRouter = createRouter({
 // ---------------------------------------------------------------------------
 
 export const runnerRouter = createRouter({
-  /** Issue a new runner token. The raw token is returned ONCE. */
+  /** Issue a new runner token bound to the calling member (BYOA:
+   *  their mentions run on this runner). The raw token is returned ONCE. */
   createToken: authedQuery
     .input(z.object({ workspaceId: z.number(), label: z.string().min(1).max(100) }))
     .mutation(async ({ ctx, input }) => {
-      await requireMembership(input.workspaceId, ctx.user.id);
+      const member = await requireMembership(input.workspaceId, ctx.user.id);
       const db = getDb();
       const token = `frl_${randomBytes(24).toString("hex")}`;
       const [r] = await db
         .insert(runners)
         .values({
           workspaceId: input.workspaceId,
+          ownerMemberId: member.id,
           label: input.label,
           tokenHash: sha256(token),
         })
@@ -156,7 +158,9 @@ export const runnerRouter = createRouter({
       return { ok: true };
     }),
 
-  /** INTERNAL: cloud validates a runner token against this endpoint. */
+  /** INTERNAL: cloud validates a runner token against this endpoint.
+   *  Returns the OWNER member's memory identity — the cloud routes a
+   *  mention to the runner whose owner matches the mention author. */
   validate: publicQuery
     .input(z.object({ token: z.string() }))
     .query(async ({ input }) => {
@@ -168,16 +172,17 @@ export const runnerRouter = createRouter({
         .limit(1);
       if (!r || r.revokedAt) return { valid: false as const };
       const [ws] = await db.select().from(workspaces).where(eq(workspaces.id, r.workspaceId)).limit(1);
-      const [member] = await db
+      const [owner] = await db
         .select()
         .from(workspaceMembers)
-        .where(eq(workspaceMembers.workspaceId, r.workspaceId))
+        .where(eq(workspaceMembers.id, r.ownerMemberId))
         .limit(1);
+      if (!ws || !owner) return { valid: false as const };
       await db.update(runners).set({ lastSeenAt: new Date() }).where(eq(runners.id, r.id));
       return {
         valid: true as const,
-        workspaceId: ws?.ovAccountId ?? "",
-        userKey: member?.ovUserKey ?? "",
+        workspaceId: ws.ovAccountId,
+        userKey: owner.ovUserKey ?? "",
         runnerId: r.id,
       };
     }),

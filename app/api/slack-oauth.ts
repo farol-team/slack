@@ -4,6 +4,7 @@ import {
   channels,
   slackInstallations,
   slackOauthStates,
+  users,
   workspaceMembers,
   workspaces,
 } from "@db/schema";
@@ -99,6 +100,66 @@ export const slackRouter = createRouter({
         teamId: inst.teamId,
         ovAccountId: ws?.ovAccountId ?? "",
       };
+    }),
+
+  /** INTERNAL for cloud: resolve a Slack user to a member's memory
+   *  identity (BYOA routing). Matches the stored slackUserId link first,
+   *  else by email — and persists the link on first match. */
+  memberByTeamUser: publicQuery
+    .input(
+      z.object({
+        teamId: z.string(),
+        slackUserId: z.string(),
+        email: z.string().email().optional(),
+      }),
+    )
+    .query(async ({ ctx, input }) => {
+      const secret = ctx.req.headers.get("x-internal-secret") ?? "";
+      if (!INTERNAL_SECRET || secret !== INTERNAL_SECRET) {
+        throw new TRPCError({ code: "UNAUTHORIZED" });
+      }
+      const db = getDb();
+      const [ws] = await db
+        .select()
+        .from(workspaces)
+        .where(eq(workspaces.slackTeamId, input.teamId))
+        .limit(1);
+      if (!ws) throw new TRPCError({ code: "NOT_FOUND", message: "workspace" });
+
+      const [linked] = await db
+        .select()
+        .from(workspaceMembers)
+        .where(
+          and(
+            eq(workspaceMembers.workspaceId, ws.id),
+            eq(workspaceMembers.slackUserId, input.slackUserId),
+          ),
+        )
+        .limit(1);
+      if (linked) {
+        return { ovUserKey: linked.ovUserKey ?? "", memberId: linked.id };
+      }
+
+      if (!input.email) {
+        throw new TRPCError({ code: "NOT_FOUND", message: "member" });
+      }
+      const [match] = await db
+        .select({ member: workspaceMembers })
+        .from(workspaceMembers)
+        .innerJoin(users, eq(workspaceMembers.userId, users.id))
+        .where(
+          and(
+            eq(workspaceMembers.workspaceId, ws.id),
+            eq(users.email, input.email),
+          ),
+        )
+        .limit(1);
+      if (!match) throw new TRPCError({ code: "NOT_FOUND", message: "member" });
+      await db
+        .update(workspaceMembers)
+        .set({ slackUserId: input.slackUserId })
+        .where(eq(workspaceMembers.id, match.member.id));
+      return { ovUserKey: match.member.ovUserKey ?? "", memberId: match.member.id };
     }),
 
   /** Import progress proxy: workspace -> cloud job status. */

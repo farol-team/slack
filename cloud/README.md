@@ -57,7 +57,9 @@ Variables:
   no single-workspace fallback).
 
 Slack app: scopes `app_mentions:read, channels:read, channels:history,
-chat:write, groups:read, groups:history`, Events: `app_mention`,
+chat:write, groups:read, groups:history, users:read, users:read.email`
+(the last two power BYOA routing: matching the mention author to a SaaS
+member by email), Events: `app_mention`,
 `message.channels`, Request URL → `https://<host>/slack/events`,
 Redirect URL → `https://<saas-host>/api/slack/callback`.
 A dev Slack app can be created from the [`slack-app-manifest.yaml`](slack-app-manifest.yaml)

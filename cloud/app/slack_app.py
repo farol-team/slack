@@ -53,6 +53,51 @@ def make_installation_resolver(saas_url: str, internal_secret: str):
     return resolve
 
 
+def make_member_resolver(saas_url: str, internal_secret: str, resolve_installation):
+    """Resolve a mention author -> the member's memory identity (BYOA).
+    Tries the stored slackUserId link in the SaaS first; on a miss, looks
+    up the author's email via the Slack API and lets the SaaS match a
+    member by email (persisting the link for next time)."""
+    cache: dict[tuple[str, str], str] = {}
+
+    async def query(team_id: str, slack_user_id: str,
+                    email: Optional[str]) -> Optional[str]:
+        payload: dict = {"teamId": team_id, "slackUserId": slack_user_id}
+        if email:
+            payload["email"] = email
+        async with httpx.AsyncClient(timeout=10) as client:
+            res = await client.get(
+                f"{saas_url}/api/trpc/slack.memberByTeamUser",
+                params={"input": json.dumps({"json": payload})},
+                headers={"x-internal-secret": internal_secret},
+            )
+        data = res.json().get("result", {}).get("data", {}).get("json", {})
+        return data.get("ovUserKey") or None
+
+    async def resolve(team_id: str, slack_user_id: str) -> Optional[str]:
+        cache_key = (team_id, slack_user_id)
+        if cache_key in cache:
+            return cache[cache_key]
+        user_key = await query(team_id, slack_user_id, None)
+        if user_key is None:
+            inst = await resolve_installation(team_id)
+            try:
+                info = await AsyncWebClient(token=inst["bot_token"]).users_info(
+                    user=slack_user_id)
+                email = (info["user"].get("profile") or {}).get("email")
+            except Exception:
+                log.exception("users_info failed for %s", slack_user_id)
+                return None
+            if not email:
+                return None
+            user_key = await query(team_id, slack_user_id, email)
+        if user_key:
+            cache[cache_key] = user_key
+        return user_key
+
+    return resolve
+
+
 def make_authorize(saas_url: str, internal_secret: str):
     """Multi-workspace authorize for Bolt, built on the installation resolver."""
     resolve = make_installation_resolver(saas_url, internal_secret)
@@ -217,7 +262,7 @@ class IngestionBuffer:
 def register_handlers(app: AsyncApp, renderer: SlackRenderer,
                       ingestion: IngestionBuffer, default_cwd: str,
                       memory_mcp_url: Optional[str],
-                      resolve_installation) -> None:
+                      resolve_installation, resolve_member) -> None:
 
     @app.event("app_mention")
     async def on_mention(event, say, context):
@@ -238,10 +283,22 @@ def register_handlers(app: AsyncApp, renderer: SlackRenderer,
                       thread_ts=thread_ts)
             return
 
-        runner = router.pick_runner(workspace)
+        # BYOA: the task runs on the mention author's own runner, under
+        # their identity — never on a teammate's machine.
+        author = event["user"]
+        user_key = await resolve_member(team_id, author)
+        if user_key is None:
+            await say(text=f"<@{author}> I couldn't match you to a Farol "
+                           "account. Sign in to the dashboard with your work "
+                           "email, then mention me again.", thread_ts=thread_ts)
+            return
+
+        runner = router.pick_runner(workspace, user_key=user_key)
         if runner is None:
-            await say(text="No runner connected. Install Farol Runner on your machine "
-                           "and connect it to this workspace.", thread_ts=thread_ts)
+            await say(text=f"<@{author}> you don't have a runner connected. "
+                           "Install Farol Runner on your machine and connect "
+                           "it with a token from the dashboard.",
+                      thread_ts=thread_ts)
             return
 
         # slack_team must stay the Slack team id: the renderer resolves
