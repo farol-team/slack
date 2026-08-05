@@ -272,11 +272,6 @@ export default function Dashboard() {
                       <Download className="h-4 w-4 mr-2" /> Windows — soon
                     </Button>
                   </div>
-                  <p className="text-xs text-muted-foreground">
-                    macOS: the binary is unsigned for now — run{" "}
-                    <code>xattr -d com.apple.quarantine ./farol-runner-*</code>{" "}
-                    once before the first start.
-                  </p>
                   <div className="flex items-start gap-2">
                     <pre className="bg-muted p-3 rounded-md text-xs flex-1 overflow-auto">
                       {runSnippet}
