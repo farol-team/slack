@@ -156,7 +156,16 @@ function FeatureCard({
 
 export default function Home() {
   const { isAuthenticated } = useAuth();
-  const ctaTo = isAuthenticated ? "/dashboard" : "/login";
+  /** Guest CTA goes straight into the Slack OIDC flow, skipping /login. */
+  const primaryCta = isAuthenticated ? (
+    <Link to="/dashboard">
+      Open dashboard <ArrowRight className="ml-2 h-4 w-4" />
+    </Link>
+  ) : (
+    <a href="/api/auth/slack">
+      <Slack className="mr-2 h-4 w-4" /> Sign in with Slack
+    </a>
+  );
 
   return (
     <div className="min-h-screen bg-[#0d0a1a] font-sans text-white antialiased selection:bg-violet-500/40">
@@ -178,7 +187,11 @@ export default function Home() {
               size="sm"
               className="bg-violet-500 text-white hover:bg-violet-400"
             >
-              <Link to={ctaTo}>{isAuthenticated ? "Dashboard" : "Sign in"}</Link>
+              {isAuthenticated ? (
+                <Link to="/dashboard">Dashboard</Link>
+              ) : (
+                <a href="/api/auth/slack">Sign in</a>
+              )}
             </Button>
           </nav>
         </div>
@@ -197,14 +210,16 @@ export default function Home() {
             Your AI agents
             <br />
             <span className="bg-gradient-to-r from-violet-300 via-fuchsia-300 to-sky-300 bg-clip-text text-transparent">
-              in Slack.
+              + Memory
             </span>
+            <br />
+            in Slack.
           </h1>
           <p className="mx-auto mt-6 max-w-2xl text-lg leading-relaxed text-violet-100/70">
-            Memory for Slack. Bring your own agents. Mention the bot in any
-            thread — a coding agent on your own machine picks up the task,
-            remembers everything your team ever said, and streams the answer
-            back.
+            Bring your own agents. Not a shared bot in our
+            cloud — your Claude, your Codex, your keys, running on your
+            machine. Mention it in any thread, and it answers with the memory
+            of your whole team.
           </p>
           <div className="mt-10 flex justify-center gap-4">
             <Button
@@ -212,9 +227,7 @@ export default function Home() {
               size="lg"
               className="bg-violet-500 px-6 text-white shadow-lg shadow-violet-600/30 hover:bg-violet-400"
             >
-              <Link to={ctaTo}>
-                Add to Slack <ArrowRight className="ml-2 h-4 w-4" />
-              </Link>
+              {primaryCta}
             </Button>
             <Button
               asChild
@@ -224,6 +237,13 @@ export default function Home() {
             >
               <a href="#how">How it works</a>
             </Button>
+          </div>
+          <div className="mt-6 flex flex-wrap items-center justify-center gap-x-6 gap-y-2 text-sm text-violet-100/50">
+            {["Your agent", "Your hardware", "Your API keys", "Your memory"].map((t) => (
+              <span key={t} className="inline-flex items-center gap-1.5">
+                <Check className="h-3.5 w-3.5 text-violet-300" /> {t}
+              </span>
+            ))}
           </div>
           <SlackMock />
         </div>
@@ -267,6 +287,25 @@ export default function Home() {
               <FeatureCard key={f.title} {...f} />
             ))}
           </div>
+        </div>
+      </section>
+
+      {/* Statement */}
+      <section className="relative overflow-hidden border-t border-white/5">
+        <Glow className="left-1/2 top-1/2 h-[24rem] w-[40rem] -translate-x-1/2 -translate-y-1/2 bg-violet-700/15" />
+        <div className="relative mx-auto max-w-4xl px-6 py-28 text-center">
+          <h2 className="text-3xl font-bold leading-snug tracking-tight sm:text-4xl">
+            The most meaningful things are never built alone.
+            <br />
+            <span className="bg-gradient-to-r from-violet-300 via-fuchsia-300 to-sky-300 bg-clip-text text-transparent">
+              AI shouldn't change that.
+            </span>
+          </h2>
+          <p className="mx-auto mt-6 max-w-2xl text-lg leading-relaxed text-violet-100/60">
+            That's why Farol is AI that helps teams think, create, and ship
+            more together — agents that live inside your conversations and
+            remember everything your team knows.
+          </p>
         </div>
       </section>
 
@@ -350,9 +389,11 @@ export default function Home() {
                   }
                   variant={p.featured ? "default" : "outline"}
                 >
-                  <Link to={isAuthenticated ? "/dashboard/settings" : "/login"}>
-                    {p.cta}
-                  </Link>
+                  {isAuthenticated ? (
+                    <Link to="/dashboard/settings">{p.cta}</Link>
+                  ) : (
+                    <a href="/api/auth/slack">{p.cta}</a>
+                  )}
                 </Button>
               </div>
             ))}
@@ -376,9 +417,7 @@ export default function Home() {
             size="lg"
             className="mt-8 bg-violet-500 px-8 text-white shadow-lg shadow-violet-600/30 hover:bg-violet-400"
           >
-            <Link to={ctaTo}>
-              Add to Slack <ArrowRight className="ml-2 h-4 w-4" />
-            </Link>
+            {primaryCta}
           </Button>
         </div>
       </section>
