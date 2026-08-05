@@ -99,6 +99,8 @@ export const slackRouter = createRouter({
         .limit(1);
       return {
         botToken: inst.botToken,
+        // Bolt needs it to recognise (and ignore) the bot's own messages.
+        botUserId: inst.botUserId,
         teamId: inst.teamId,
         ovAccountId: ws?.ovAccountId ?? "",
       };

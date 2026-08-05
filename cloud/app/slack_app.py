@@ -51,6 +51,7 @@ def make_installation_resolver(saas_url: str, internal_secret: str,
             raise RuntimeError(f"no installation for team {team_id}")
         inst = {
             "bot_token": data["botToken"],
+            "bot_user_id": data.get("botUserId"),
             "ov_account_id": data.get("ovAccountId") or team_id,
         }
         cache[team_id] = (time.monotonic(), inst)
@@ -111,7 +112,14 @@ def make_authorize(saas_url: str, internal_secret: str):
 
     async def authorize(enterprise_id, team_id, user_id=None, **kwargs):
         inst = await resolve(team_id)
-        return AuthorizeResult(bot_token=inst["bot_token"])
+        # enterprise_id/team_id are required by AuthorizeResult — without them
+        # every Slack event dies in the middleware with a 500.
+        return AuthorizeResult(
+            enterprise_id=enterprise_id,
+            team_id=team_id,
+            bot_token=inst["bot_token"],
+            bot_user_id=inst.get("bot_user_id"),
+        )
 
     return authorize
 
