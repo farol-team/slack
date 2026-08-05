@@ -80,9 +80,41 @@ impl RunnerConfig {
     pub fn load() -> Result<Self> {
         let path = Self::config_path()?;
         match std::fs::read_to_string(&path) {
-            Ok(s) => Ok(serde_json::from_str(&s)?),
+            Ok(s) => {
+                let mut cfg: Self = serde_json::from_str(&s)?;
+                if cfg.retire_legacy_agents() {
+                    let _ = cfg.save();
+                }
+                Ok(cfg)
+            }
             Err(_) => Ok(Self::default()),
         }
+    }
+
+    /// Names earlier builds wrote, pointing at commands that never worked:
+    /// `claude --acp` (no such flag) and an npx-fetched adapter. A config
+    /// written months ago must not decide what runs today — and it did: the
+    /// cloud routes to the first agent announced, so one stale entry at the
+    /// front of the list swallowed every turn.
+    fn retire_legacy_agents(&mut self) -> bool {
+        const RETIRED: &[&str] = &["claude-code", "gemini"];
+        let before = self.agents.len();
+        self.agents.retain(|a| {
+            !RETIRED.contains(&a.name.as_str())
+                || crate::agents::is_installed(&a.command, None)
+        });
+        // Whatever the catalog offers should be listed, even if absent: the
+        // panel shows it as installable and `installed_agent_names` filters.
+        for profile in crate::agents::BASELINE {
+            if !self.agents.iter().any(|a| a.name == profile.name) {
+                self.agents.push(AgentEntry {
+                    name: profile.name.into(),
+                    command: profile.command.into(),
+                    args: profile.args.iter().map(|a| (*a).to_string()).collect(),
+                });
+            }
+        }
+        self.agents.len() != before
     }
 
     pub fn save(&self) -> Result<()> {

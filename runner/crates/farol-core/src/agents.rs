@@ -66,18 +66,49 @@ pub fn profile_for(name: &str) -> Option<&'static AgentProfile> {
 /// asked. Answered once: starting a shell is not free.
 pub fn login_path() -> Option<String> {
     static CACHE: OnceLock<Option<String>> = OnceLock::new();
-    CACHE
-        .get_or_init(|| {
-            let shell = std::env::var("SHELL").unwrap_or_else(|_| "/bin/sh".into());
-            let out = std::process::Command::new(shell)
-                .args(["-ilc", "printf %s \"$PATH\""])
-                .stdin(std::process::Stdio::null())
-                .output()
-                .ok()?;
-            let path = String::from_utf8_lossy(&out.stdout).trim().to_string();
-            (!path.is_empty()).then_some(path)
-        })
-        .clone()
+    CACHE.get_or_init(ask_the_shell).clone()
+}
+
+/// Ask once, and give up after two seconds. An interactive shell is somebody
+/// else's config: it can print a prompt, wait on a tty, or simply take its
+/// time, and none of that may hold up a turn that Slack is waiting on.
+fn ask_the_shell() -> Option<String> {
+    let (tx, rx) = std::sync::mpsc::channel();
+    std::thread::spawn(move || {
+        let shell = std::env::var("SHELL").unwrap_or_else(|_| "/bin/sh".into());
+        let out = std::process::Command::new(shell)
+            .args(["-ilc", "printf %s \"$PATH\""])
+            .stdin(std::process::Stdio::null())
+            .output();
+        let _ = tx.send(out.ok().map(|o| {
+            String::from_utf8_lossy(&o.stdout).trim().to_string()
+        }));
+    });
+    match rx.recv_timeout(std::time::Duration::from_secs(2)) {
+        Ok(Some(path)) if !path.is_empty() => Some(path),
+        _ => None,
+    }
+}
+
+/// Where package managers put things when the shell cannot be asked. Not a
+/// guess about this machine — a list of the places that exist on it.
+fn common_bin_dirs() -> Vec<PathBuf> {
+    let mut dirs = vec![
+        PathBuf::from("/opt/homebrew/bin"),
+        PathBuf::from("/usr/local/bin"),
+    ];
+    if let Some(home) = std::env::var_os("HOME") {
+        let home = PathBuf::from(home);
+        dirs.push(home.join(".volta/bin"));
+        dirs.push(home.join(".bun/bin"));
+        // nvm keeps one directory per installed node version.
+        if let Ok(versions) = std::fs::read_dir(home.join(".nvm/versions/node")) {
+            for v in versions.flatten() {
+                dirs.push(v.path().join("bin"));
+            }
+        }
+    }
+    dirs.into_iter().filter(|d| d.is_dir()).collect()
 }
 
 /// PATH to hand a child process: the runner's own bin dir first, then whatever
@@ -92,6 +123,9 @@ pub fn spawn_path(prefix: Option<&Path>) -> String {
     }
     if let Some(p) = std::env::var_os("PATH").and_then(|p| p.into_string().ok()) {
         parts.push(p);
+    }
+    for dir in common_bin_dirs() {
+        parts.push(dir.display().to_string());
     }
     parts.join(":")
 }
@@ -112,11 +146,21 @@ pub fn resolve(command: &str, prefix: Option<&Path>) -> Option<PathBuf> {
         .find(|c| c.is_file())
 }
 
+/// Package runners: finding one of these on the machine says nothing about
+/// whether the adapter behind it is there. `npx -y <pkg>` resolves, announces
+/// itself as ready, and then spends a minute fetching — or fails — inside a
+/// turn somebody is waiting on in Slack.
+const PROXIES: &[&str] = &["npx", "npm", "pnpm", "pnpx", "yarn", "bunx", "uvx"];
+
 /// Whether a configured agent can actually be spawned right now. A command
 /// with a path in it is checked where it points — that is what `install`
 /// writes into config.json; a bare name is looked up as `resolve` does.
 pub fn is_installed(command: &str, prefix: Option<&Path>) -> bool {
     let p = Path::new(command);
+    let leaf = p.file_name().and_then(|n| n.to_str()).unwrap_or(command);
+    if PROXIES.contains(&leaf) {
+        return false;
+    }
     if p.components().count() > 1 {
         return p.is_file();
     }
