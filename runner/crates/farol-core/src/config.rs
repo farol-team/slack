@@ -50,15 +50,17 @@ impl Default for RunnerConfig {
             saas_url: default_saas_url(),
             workspace_id: None,
             agents: vec![
+                // The Claude Code CLI has no ACP mode of its own — Zed's
+                // adapter wraps it and speaks ACP over stdio.
                 AgentEntry {
                     name: "claude-code".into(),
-                    command: "claude".into(),
-                    args: vec!["--acp".into()],
+                    command: "npx".into(),
+                    args: vec!["-y".into(), "@zed-industries/claude-code-acp".into()],
                 },
                 AgentEntry {
-                    name: "gemini".into(),
-                    command: "gemini".into(),
-                    args: vec!["--acp".into()],
+                    name: "opencode".into(),
+                    command: "opencode".into(),
+                    args: vec!["acp".into()],
                 },
             ],
             allowed_cwds: vec![],

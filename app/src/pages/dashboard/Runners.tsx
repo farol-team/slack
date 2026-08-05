@@ -136,6 +136,31 @@ export default function Runners() {
             </CardContent>
           </Card>
 
+          <Card>
+            <CardHeader><CardTitle className="text-base">Run it on the machine</CardTitle></CardHeader>
+            <CardContent className="space-y-3">
+              <pre className="bg-muted p-3 rounded-md text-xs overflow-x-auto">
+{`export FAROL_RUNNER_TOKEN=frl_...
+export FAROL_ALLOWED_CWDS=$HOME/projects   # dirs the agent may touch
+./farol-runner-linux-x64`}
+              </pre>
+              <p className="text-sm text-muted-foreground">
+                The coding agent is a separate program the runner talks to over
+                ACP. Pick one in{" "}
+                <code>~/.config/farol-runner/config.json</code>:
+              </p>
+              <pre className="bg-muted p-3 rounded-md text-xs overflow-x-auto">
+{`{
+  "agents": [
+    { "name": "claude-code", "command": "npx",
+      "args": ["-y", "@zed-industries/claude-code-acp"] },
+    { "name": "opencode", "command": "opencode", "args": ["acp"] }
+  ]
+}`}
+              </pre>
+            </CardContent>
+          </Card>
+
           {issued && (
             <Card className="border-primary">
               <CardHeader><CardTitle className="text-base">Token created — shown only once</CardTitle></CardHeader>
