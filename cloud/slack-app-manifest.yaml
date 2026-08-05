@@ -22,6 +22,12 @@ oauth_config:
       - users:read
       - users:read.email
 settings:
+  # Approve/Deny/Stop are buttons: without this, Slack delivers the click
+  # nowhere and the agent waits for an answer that cannot arrive. Bolt takes
+  # interactions on the same endpoint as events.
+  interactivity:
+    is_enabled: true
+    request_url: https://REPLACE-ME.ngrok.io/slack/events
   event_subscriptions:
     request_url: https://REPLACE-ME.ngrok.io/slack/events
     bot_events:

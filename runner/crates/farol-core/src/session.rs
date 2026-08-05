@@ -15,6 +15,9 @@ use tokio::sync::{mpsc, Mutex};
 use tracing::{error, info};
 use uuid::Uuid;
 
+/// How long a permission request may wait for a human before it is refused.
+const PERMISSION_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(600);
+
 struct RunningTask {
     client: Arc<AcpClient>,
     session_id: Option<String>,
@@ -146,8 +149,22 @@ impl SessionManager {
                     AcpEvent::Plan(t) => (TurnEventKind::Plan, t, None),
                     AcpEvent::PermissionRequest { request_id, description, allow_id, reject_id } => {
                         let pid = request_id.to_string();
-                        running.lock().await
-                            .pending_permissions.insert(pid.clone(), (request_id, allow_id, reject_id));
+                        running.lock().await.pending_permissions
+                            .insert(pid.clone(), (request_id, allow_id, reject_id.clone()));
+                        // Nobody may answer — a misconfigured Slack app delivers
+                        // the click nowhere, and the agent would hold the thread
+                        // forever. Silence becomes a refusal, not a deadlock.
+                        let task = running.clone();
+                        let pid_timeout = pid.clone();
+                        tokio::spawn(async move {
+                            tokio::time::sleep(PERMISSION_TIMEOUT).await;
+                            let mut t = task.lock().await;
+                            if t.pending_permissions.remove(&pid_timeout).is_some() {
+                                tracing::warn!("permission {pid_timeout} unanswered \
+                                    for {}s — denying", PERMISSION_TIMEOUT.as_secs());
+                                let _ = t.client.respond_permission(request_id, &reject_id).await;
+                            }
+                        });
                         (TurnEventKind::PermissionRequest, description, Some(pid))
                     }
                 };
