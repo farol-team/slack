@@ -1,0 +1,21 @@
+# The workflow kit under .claude/ is the revision it says it is.
+# See farol-team/agent-flow README ("Canonical source & staying in sync").
+name: kit
+
+on:
+  pull_request:
+  push:
+    branches: [master]
+
+jobs:
+  kit-intact:
+    name: the workflow kit is the revision it says it is
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: kit matches .claude/KIT_REVISION
+        run: bin/kit-verify
+      - name: and the check can fail
+        # A green check that cannot go red says nothing. This proves it can on
+        # every run, rather than on the day somebody thinks to try it.
+        run: bin/kit-verify --selftest

@@ -1,0 +1,3 @@
+# agent-flow runtime state (worktrees and worker logs are per-machine)
+.gilb/worktrees/
+.gilb/worker-logs/

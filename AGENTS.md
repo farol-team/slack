@@ -137,6 +137,25 @@ Requirements: Rust stable, Node 18+, Tauri 2 system dependencies.
 - Minimal pre-submit check: `npm run check` + `npm run lint` (app),
   `cargo check` (runner), uvicorn import/startup (cloud).
 
+## Development workflow (agent-flow)
+
+- Tasks are GitHub Issues in this repo; pipeline states are `flow:*` labels
+  (backlog → plan-proposed → ready → in-progress → review/done), priorities
+  are `P0`/`P1`/`P2` labels. Migrated from the former Trello board
+  "Slack Agent Bridge — MVP" (2026-08).
+- The [farol-team/agent-flow](https://github.com/farol-team/agent-flow) kit
+  drives the pipeline: `/flow-check` triages backlog issues into PLANs, a
+  human approves by swapping the label to `flow:ready`, `/flow-run` executes
+  in an isolated worktree under `.gilb/worktrees/` (gitignored).
+- Kit files (`.claude/{commands,prompts,hooks,bin,providers}`) are synced
+  from the canonical repo via `bin/workflow-kit-sync` and pinned by
+  `.claude/KIT_REVISION` — never edit them in this repo; CI
+  (`.github/workflows/kit.yml`) fails the PR if they drift.
+- Project-owned config: `.claude/tracker.json` (targets app/cloud/runner,
+  card prefix FRL), `.claude/constitution.md` (non-negotiables incl. the
+  protocol double-mirror rule), `.claude/project-context.md` (what workers
+  read before touching code).
+
 ## Security
 
 - Secrets only via env: `app/.env.example`, `cloud/.env.example` are templates;
