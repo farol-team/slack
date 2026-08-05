@@ -157,13 +157,16 @@ jobs:
         run: |
           # Tauri notarizes and staples the .app, but ships the .dmg container
           # only signed — Gatekeeper checks the .dmg the user double-clicks.
-          dmg=$(ls src-tauri/target/universal-apple-darwin/release/bundle/dmg/*.dmg | head -1)
+          # Bundles land in the Cargo workspace target dir, not under src-tauri.
+          dmg=$(ls "$GITHUB_WORKSPACE"/runner/target/universal-apple-darwin/release/bundle/dmg/*.dmg | head -1)
+          [ -n "$dmg" ] || { echo "no .dmg produced"; exit 1; }
           xcrun notarytool submit "$dmg" --apple-id "$APPLE_ID" \
             --password "$APPLE_PASSWORD" --team-id "$APPLE_TEAM_ID" --wait
           xcrun stapler staple "$dmg"
       - name: Stage asset
         run: |
-          dmg=$(ls src-tauri/target/universal-apple-darwin/release/bundle/dmg/*.dmg | head -1)
+          dmg=$(ls "$GITHUB_WORKSPACE"/runner/target/universal-apple-darwin/release/bundle/dmg/*.dmg | head -1)
+          [ -n "$dmg" ] || { echo "no .dmg produced"; exit 1; }
           # Stable name so releases/latest/download/... keeps working.
           cp "$dmg" farol-runner-macos.dmg
       - uses: actions/upload-artifact@v4
