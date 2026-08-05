@@ -46,7 +46,7 @@ pub struct AgentEntry {
 impl Default for RunnerConfig {
     fn default() -> Self {
         Self {
-            cloud_url: "wss://api.farol.team/runner/v1".into(),
+            cloud_url: "wss://hooks.farol.team/runner/v1".into(),
             saas_url: default_saas_url(),
             workspace_id: None,
             agents: vec![

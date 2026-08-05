@@ -390,7 +390,50 @@ async function ovFetch(path: string, body: unknown, account?: string) {
   return res.json();
 }
 
+export type MemoryStats = {
+  channels: {
+    channelId: string;
+    files: number;
+    bytes: number;
+    lastModified: string | null;
+  }[];
+  totalFiles: number;
+  totalBytes: number;
+  lastModified: string | null;
+};
+
 export const memoryRouter = createRouter({
+  /** Aggregated Slack-memory stats, proxied from the cloud (which owns
+   *  OpenViking access; the SaaS has no direct OV route). */
+  stats: authedQuery
+    .input(z.object({ workspaceId: z.number() }))
+    .query(async ({ ctx, input }): Promise<MemoryStats | null> => {
+      await requireMembership(input.workspaceId, ctx.user.id);
+      const db = getDb();
+      const [ws] = await db
+        .select()
+        .from(workspaces)
+        .where(eq(workspaces.id, input.workspaceId))
+        .limit(1);
+      if (!ws?.slackTeamId) return null;
+      const cloudUrl = (process.env.FAROL_CLOUD_URL ?? "").replace(/\/$/, "");
+      if (!cloudUrl || !INTERNAL_SECRET) return null;
+      try {
+        const res = await fetch(`${cloudUrl}/internal/memory/stats`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "x-internal-secret": INTERNAL_SECRET,
+          },
+          body: JSON.stringify({ team_id: ws.slackTeamId }),
+        });
+        if (!res.ok) return null;
+        return (await res.json()) as MemoryStats;
+      } catch {
+        return null;
+      }
+    }),
+
   search: authedQuery
     .input(z.object({ workspaceId: z.number(), query: z.string().min(1), scope: z.string().optional() }))
     .query(async ({ ctx, input }) => {

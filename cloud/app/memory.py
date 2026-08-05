@@ -88,6 +88,17 @@ class OpenVikingClient:
         res.raise_for_status()
         return res.json()
 
+    # ---------- filesystem (dashboard stats) ----------
+
+    async def ls(self, account_id: str, user_id: str, uri: str) -> list[dict]:
+        """List one directory level of the account's viking filesystem."""
+        res = await self._client.get(
+            "/api/v1/fs/ls", params={"uri": uri},
+            headers=self._tenant(account_id, user_id),
+        )
+        res.raise_for_status()
+        return res.json().get("result") or []
+
     # ---------- retrieval (dashboard / debugging) ----------
 
     async def find(self, account_id: str, user_id: str, query: str,

@@ -21,7 +21,21 @@ use tracing::{error, info};
 async fn main() -> anyhow::Result<()> {
     tracing_subscriber::fmt::init();
 
-    let cfg = RunnerConfig::load()?;
+    let mut cfg = RunnerConfig::load()?;
+    // First-run ergonomics: FAROL_ALLOWED_CWDS (colon-separated) overrides;
+    // an empty allowlist falls back to the home directory with a warning —
+    // turns only ever come from the owner's own mentions (BYOA), but tighten
+    // it in config.json when you can.
+    if let Ok(list) = std::env::var("FAROL_ALLOWED_CWDS") {
+        cfg.allowed_cwds = std::env::split_paths(&list).collect();
+    }
+    if cfg.allowed_cwds.is_empty() {
+        if let Some(home) = std::env::var_os("HOME") {
+            tracing::warn!("allowed_cwds is empty — defaulting to {home:?}; \
+                            set FAROL_ALLOWED_CWDS or edit config.json to restrict");
+            cfg.allowed_cwds.push(home.into());
+        }
+    }
     let token = match std::env::var("FAROL_RUNNER_TOKEN")
         .ok()
         .or_else(|| RunnerConfig::token().ok().flatten())
