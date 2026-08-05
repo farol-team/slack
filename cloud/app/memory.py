@@ -60,14 +60,31 @@ class OpenVikingClient:
     async def add_resource(self, account_id: str, content: str, path: str,
                            reason: str = "", wait: bool = False,
                            user_id: str = INGEST_USER) -> dict:
-        """Write a batch of Slack messages as a shared resource document.
-        `path` is relative to the account, e.g. `resources/slack/C123/2026-08-05.md`."""
-        res = await self._client.post(
-            "/api/v1/resources",
-            json={"to": f"viking://{path}", "content": content,
-                  "reason": reason, "wait": wait},
-            headers=self._tenant(account_id, user_id),
-        )
+        """Append a batch of Slack messages to a channel's day file.
+        `path` is relative to the account, e.g. `resources/slack/C123/2026-08-05.md`.
+
+        Plain text goes through `content/write` (`/api/v1/resources` is the
+        URL/file importer and rejects inline content): `append` for an
+        existing file, `create` on 404 (parents auto-created), and back to
+        `append` if we lose the creation race (409). Verified against
+        OpenViking v0.4.12."""
+        if not content.endswith("\n"):
+            content += "\n"
+        headers = self._tenant(account_id, user_id)
+
+        async def write(mode: str) -> httpx.Response:
+            return await self._client.post(
+                "/api/v1/content/write",
+                json={"uri": f"viking://{path}", "content": content,
+                      "mode": mode, "wait": wait},
+                headers=headers,
+            )
+
+        res = await write("append")
+        if res.status_code == 404:
+            res = await write("create")
+            if res.status_code == 409:
+                res = await write("append")
         res.raise_for_status()
         return res.json()
 

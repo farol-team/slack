@@ -133,6 +133,15 @@ impl SessionManager {
         // Мьютекса на клиенте нет: respond_permission/cancel пишут в stdin
         // параллельно через свой мьютекс внутри AcpClient.
         let result = client.prompt(&sid, &task.prompt).await;
+
+        // If the entry is gone, the task was cancelled: the agent process
+        // is already dead and the Cancelled result already sent.
+        let Some(entry) = self.tasks.lock().await.remove(&task.task_id) else {
+            return;
+        };
+        // One task = one process: reap the agent, the session lives on
+        // disk and can be resumed by a fresh process via session/load.
+        entry.lock().await.client.shutdown().await;
         match result {
             Ok(()) => self.finish(task.task_id, TaskStatus::Done, session_id, None),
             Err(e) => self.finish(task.task_id, TaskStatus::Failed, session_id, Some(e.to_string())),
@@ -151,16 +160,20 @@ impl SessionManager {
         }
     }
 
-    /// Slack pressed Stop.
+    /// Slack pressed Stop: cancel the session, then kill the agent
+    /// process — Stop must actually stop work on the machine.
     pub async fn handle_cancel(&self, task_id: Uuid) {
-        let tasks = self.tasks.lock().await;
-        if let Some(task) = tasks.get(&task_id) {
+        let entry = self.tasks.lock().await.remove(&task_id);
+        let Some(task) = entry else { return };
+        let (session_id, client) = {
             let t = task.lock().await;
-            if let Some(sid) = &t.session_id {
-                let _ = t.client.cancel(sid).await;
-            }
+            (t.session_id.clone(), t.client.clone())
+        };
+        if let Some(sid) = &session_id {
+            let _ = client.cancel(sid).await;
         }
-        self.finish(task_id, TaskStatus::Cancelled, None, None);
+        client.shutdown().await;
+        self.finish(task_id, TaskStatus::Cancelled, session_id, None);
     }
 
     fn finish(&self, task_id: Uuid, status: TaskStatus, session_id: Option<String>, error: Option<String>) {
