@@ -188,6 +188,10 @@ export const slackInstallations = pgTable("slack_installations", {
   botUserId: varchar("botUserId", { length: 64 }),
   /** Bot access token (xoxb-...). Production: encrypt at rest (KMS). */
   botToken: text("botToken").notNull(),
+  /** Scopes as recorded at install time. Slack can widen a grant without
+   *  our callback seeing it (a reinstall from api.slack.com updates the same
+   *  token), so treat this as a hint — `auth.test` returns the truth in the
+   *  `x-oauth-scopes` header. */
   scopes: varchar("scopes", { length: 512 }),
   installedByUserId: integer("installedByUserId").references(() => users.id),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
