@@ -19,6 +19,10 @@ struct AppState {
     /// Handle on the live cloud loop, so installing an adapter can end it and
     /// hand the cloud a fresh `hello` with the new agent in it.
     cloud: RwLock<Option<farol_core::cloud::CloudSender>>,
+    /// The token this session is connected with. Held here because keyring on
+    /// macOS can fail a read straight after a write, and a restart that lost
+    /// the token would drop a working runner offline.
+    token: RwLock<Option<String>>,
 }
 
 #[derive(Clone, Serialize)]
@@ -264,13 +268,14 @@ async fn add_allowed_cwd(path: String) -> Result<(), String> {
 /// says has changed; `start_cloud` re-reads config.json on its way in.
 async fn restart_cloud(app: &AppHandle) {
     let state = app.state::<AppState>();
+    let token = state.token.read().await.clone();
     if let Some(cloud) = state.cloud.write().await.take() {
         cloud.stop();
     }
     if let Some(sm) = state.session_manager.write().await.take() {
         sm.shutdown().await;
     }
-    start_cloud(app.clone(), None).await;
+    start_cloud(app.clone(), token).await;
 }
 
 async fn start_cloud(app: AppHandle, token: Option<String>) {
@@ -302,6 +307,7 @@ async fn start_cloud(app: AppHandle, token: Option<String>) {
         }
     };
     tracing::info!("start_cloud: token len={}", token.len());
+    let token_for_state = token.clone();
 
     // Announce only adapters that are actually on this machine: the cloud
     // routes a turn to a name from this list, and a name that is not here
@@ -326,6 +332,7 @@ async fn start_cloud(app: AppHandle, token: Option<String>) {
     .await;
 
     let state = app.state::<AppState>();
+    *state.token.write().await = Some(token_for_state);
     let sm = Arc::new(SessionManager::new(cfg.clone(), cloud.clone()));
     *state.session_manager.write().await = Some(sm);
     *state.cloud.write().await = Some(cloud);
@@ -374,6 +381,7 @@ pub fn run() {
             status: RwLock::new(RunnerStatus::default()),
             session_manager: RwLock::new(None),
             cloud: RwLock::new(None),
+            token: RwLock::new(None),
         })
         .invoke_handler(tauri::generate_handler![
             get_status,

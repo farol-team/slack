@@ -23,6 +23,7 @@
 <body>
   <h1>Farol Runner</h1>
   <div class="sub">Thin client · Slack ↔ your local agent</div>
+  <div id="app-error" style="color:#ff3b30;font-size:12px;white-space:pre-wrap;margin-bottom:12px"></div>
 
   <div id="status-card" class="card">
     <div class="row"><span>Connection</span>
@@ -39,7 +40,6 @@
       machine starts answering mentions in your Slack.
     </div>
     <div id="connect-status" style="color:#888;font-size:12px;margin-top:6px"></div>
-    <div id="login-error" style="color:#ff3b30;font-size:12px;white-space:pre-wrap"></div>
   </div>
 
   <div class="card">
@@ -115,9 +115,10 @@
     }
   }
 
+  // One place for anything that went wrong. It does not reveal the connect
+  // card: an error while connected is still an error, not a logout.
   function showError(e) {
-    document.getElementById('login-card').style.display = 'block';
-    document.getElementById('login-error').textContent = String(e && e.message || e);
+    document.getElementById('app-error').textContent = String(e && e.message || e);
   }
   window.onerror = (m, s, l, c, err) => showError(err || m);
   window.onunhandledrejection = ev => showError(ev.reason);
@@ -128,7 +129,7 @@
   }
 
   async function doConnect() {
-    document.getElementById('login-error').textContent = '';
+    document.getElementById('app-error').textContent = '';
     document.getElementById('connect-btn').disabled = true;
     document.getElementById('connect-status').textContent = 'Waiting for browser approval…';
     try {
@@ -150,7 +151,7 @@
   }
 
   listen('status-changed', () => { resetConnect(); refresh(); });
-  listen('cloud-error', e => { resetConnect(); alert(e.payload); });
+  listen('cloud-error', e => { resetConnect(); showError(e.payload); });
   refresh();
   refreshAgents();
 </script>
