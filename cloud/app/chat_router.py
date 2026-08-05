@@ -173,12 +173,22 @@ class ChatRouter:
                 saas_url = os.environ["FAROL_SAAS_URL"].rstrip("/")
                 payload["secret"] = os.environ["INTERNAL_API_SECRET"]
                 async with httpx.AsyncClient(timeout=10) as client:
-                    await client.post(
-                        f"{saas_url}/api/trpc/{procedure}",
-                        json={"json": payload},
-                        headers={"x-internal-secret":
-                                 os.environ["INTERNAL_API_SECRET"]},
-                    )
+                    for attempt in range(3):
+                        res = await client.post(
+                            f"{saas_url}/api/trpc/{procedure}",
+                            json={"json": payload},
+                            headers={"x-internal-secret":
+                                     os.environ["INTERNAL_API_SECRET"]},
+                        )
+                        # These writes are fired independently, so a turn can
+                        # reach the SaaS before the chat it belongs to. 404
+                        # means "not yet" far more often than "never".
+                        if res.status_code != 404 or attempt == 2:
+                            if res.status_code >= 400:
+                                log.warning("saas mirror %s -> %s", procedure,
+                                            res.status_code)
+                            return
+                        await asyncio.sleep(0.5 * (attempt + 1))
             except Exception:
                 log.warning("saas mirror %s failed", procedure)
         asyncio.create_task(send())
