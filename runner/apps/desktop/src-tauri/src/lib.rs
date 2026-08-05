@@ -31,6 +31,9 @@ struct RunnerStatus {
     /// report says what it is about. The commit is what actually distinguishes
     /// two builds — the release tag gets moved.
     version: String,
+    /// Where channel directories are derived. Shown, not editable: the runner
+    /// owns this path, and every channel gets its own folder inside it.
+    root: String,
     connected: bool,
     workspace_id: Option<String>,
     logged_in: bool,
@@ -41,6 +44,9 @@ struct RunnerStatus {
 impl Default for RunnerStatus {
     fn default() -> Self {
         Self {
+            root: RunnerConfig::load()
+                .map(|c| c.root_dir.display().to_string())
+                .unwrap_or_default(),
             version: match option_env!("FAROL_BUILD_SHA") {
                 Some(sha) => format!("{} ({})", env!("CARGO_PKG_VERSION"), &sha[..7.min(sha.len())]),
                 None => env!("CARGO_PKG_VERSION").to_string(),
@@ -254,50 +260,6 @@ async fn install_agent(app: AppHandle, name: String) -> Result<AgentRow, String>
     })
 }
 
-/// What the panel says about where work happens: the root the runner owns and
-/// every extra folder the person opened up. Two kinds, one list.
-#[derive(Clone, Serialize)]
-struct FolderRow {
-    path: String,
-    /// The root is not removable — it is where derived directories live.
-    removable: bool,
-}
-
-#[tauri::command]
-async fn list_folders() -> Result<Vec<FolderRow>, String> {
-    let cfg = RunnerConfig::load().map_err(|e| e.to_string())?;
-    let mut rows = vec![FolderRow {
-        path: cfg.root_dir.display().to_string(),
-        removable: false,
-    }];
-    for p in cfg.allowed_cwds.iter().chain(cfg.bindings.values()) {
-        rows.push(FolderRow { path: p.display().to_string(), removable: true });
-    }
-    Ok(rows)
-}
-
-/// Pick a directory to add to the agent's allowed working dirs.
-#[tauri::command]
-async fn add_allowed_cwd(path: String) -> Result<(), String> {
-    let mut cfg = RunnerConfig::load().map_err(|e| e.to_string())?;
-    let path = std::path::PathBuf::from(path);
-    if !cfg.allowed_cwds.contains(&path) {
-        cfg.allowed_cwds.push(path);
-    }
-    cfg.save().map_err(|e| e.to_string())
-}
-
-/// Close a folder off again. The root cannot be removed: derived directories
-/// live there, and a runner with nowhere to work is not a state to offer.
-#[tauri::command]
-async fn remove_allowed_cwd(path: String) -> Result<(), String> {
-    let mut cfg = RunnerConfig::load().map_err(|e| e.to_string())?;
-    let path = std::path::PathBuf::from(path);
-    cfg.allowed_cwds.retain(|p| p != &path);
-    cfg.bindings.retain(|_, p| p != &path);
-    cfg.save().map_err(|e| e.to_string())
-}
-
 // ---------- Cloud wiring ----------
 
 /// Tear down the current connection and dial again. Used when what `hello`
@@ -422,12 +384,9 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             get_status,
             logout,
-            add_allowed_cwd,
             authorize_in_browser,
             list_agents,
-            install_agent,
-            list_folders,
-            remove_allowed_cwd
+            install_agent
         ])
         .setup(|app| {
             // A bundled .app has nowhere to print: without a log on disk,

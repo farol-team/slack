@@ -31,6 +31,7 @@
     <div class="row"><span>Workspace</span><span id="ws">—</span></div>
     <div class="row"><span>Agents</span><span id="agents">—</span></div>
     <div class="row"><span>Active tasks</span><span id="tasks">0</span></div>
+    <div class="row"><span>Work folder</span><span id="root">—</span></div>
   </div>
 
   <div id="login-card" class="card" style="display:none">
@@ -51,12 +52,6 @@
   </div>
 
   <div class="card">
-    <div style="font-size:12px;color:#888;margin-bottom:8px">
-      Where the agent may work. Each channel gets its own folder under the
-      first one; add your own repositories to let it work on those.
-    </div>
-    <div id="folder-list"></div>
-    <button class="ghost" onclick="addCwd()">Add project folder…</button>
     <button class="ghost" id="logout-btn" style="display:none" onclick="doLogout()">Disconnect</button>
   </div>
 
@@ -65,7 +60,6 @@
 <script>
   const { invoke } = window.__TAURI__.core;
   const { listen } = window.__TAURI__.event;
-  const { open } = window.__TAURI__.dialog || {};
 
   async function refresh() {
     const s = await invoke('get_status');
@@ -75,6 +69,9 @@
     document.getElementById('agents').textContent = s.agents.join(', ') || '—';
     document.getElementById('tasks').textContent = s.active_tasks;
     document.getElementById('version').textContent = 'v' + s.version;
+    const root = document.getElementById('root');
+    root.textContent = (s.root || '—').replace(/^\/Users\/[^/]+/, '~').replace(/^\/home\/[^/]+/, '~');
+    root.title = s.root + '  —  each channel works in its own folder here';
     document.getElementById('login-card').style.display = s.logged_in ? 'none' : 'block';
     document.getElementById('logout-btn').style.display = s.logged_in ? 'block' : 'none';
   }
@@ -102,34 +99,6 @@
         right.appendChild(btn);
       }
       row.append(left, right);
-      box.appendChild(row);
-    }
-  }
-
-  async function refreshFolders() {
-    const rows = await invoke('list_folders');
-    const box = document.getElementById('folder-list');
-    box.innerHTML = '';
-    for (const f of rows) {
-      const row = document.createElement('div');
-      row.className = 'row';
-      const left = document.createElement('span');
-      left.textContent = f.path.replace(/^\/Users\/[^/]+/, '~').replace(/^\/home\/[^/]+/, '~');
-      left.title = f.path;
-      left.style.overflow = 'hidden';
-      left.style.textOverflow = 'ellipsis';
-      row.appendChild(left);
-      if (f.removable) {
-        const btn = document.createElement('button');
-        btn.className = 'ghost';
-        btn.textContent = 'Remove';
-        btn.style.cssText = 'margin:0;width:auto';
-        btn.onclick = async () => {
-          await invoke('remove_allowed_cwd', { path: f.path });
-          refreshFolders();
-        };
-        row.appendChild(btn);
-      }
       box.appendChild(row);
     }
   }
@@ -177,19 +146,10 @@
 
   async function doLogout() { await invoke('logout'); refresh(); }
 
-  async function addCwd() {
-    if (!open) return;
-    const dir = await open({ directory: true });
-    if (!dir) return;
-    await invoke('add_allowed_cwd', { path: dir });
-    refreshFolders();
-  }
-
   listen('status-changed', () => { resetConnect(); refresh(); });
   listen('cloud-error', e => { resetConnect(); showError(e.payload); });
   refresh();
   refreshAgents();
-  refreshFolders();
 </script>
 </body>
 </html>
