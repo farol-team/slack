@@ -51,15 +51,15 @@ async fn get_status(state: State<'_, AppState>) -> Result<RunnerStatus, String> 
     Ok(s)
 }
 
-/// Login flow: user pastes the token from the web dashboard.
-/// Kept as a fallback; the primary flow is `connect_with_slack`.
+/// Fallback for machines the browser handoff cannot serve: the person pastes
+/// a runner token issued in the dashboard. `authorize_in_browser` is the way in.
 #[tauri::command]
-async fn login(app: AppHandle, token: String) -> Result<(), String> {
-    tracing::info!("IPC login: token_len={}", token.len());
+async fn save_runner_token(app: AppHandle, token: String) -> Result<(), String> {
+    tracing::info!("IPC save_runner_token: token_len={}", token.len());
     match RunnerConfig::set_token(&token) {
-        Ok(()) => tracing::info!("IPC login: keychain write OK"),
+        Ok(()) => tracing::info!("IPC save_runner_token: keychain write OK"),
         Err(e) => {
-            tracing::error!("IPC login: keychain write FAILED: {e}");
+            tracing::error!("IPC save_runner_token: keychain write FAILED: {e}");
             return Err(e.to_string());
         }
     }
@@ -78,15 +78,16 @@ fn machine_label() -> String {
         .unwrap_or_else(|| "unknown".into())
 }
 
-/// Primary login flow: "Connect with Slack". Creates a connect session on the
-/// SaaS, opens the approval URL in the system browser, then polls in the
-/// background. On approval the token is stored and the cloud starts; failures
-/// surface in the UI via the "cloud-error" event.
+/// The way in: create a connect session on the SaaS, open its approval page in
+/// the system browser, then poll in the background. The page is the dashboard,
+/// not Slack — the person approves this machine while signed in there. On
+/// approval the token is stored and the cloud starts; failures surface in the
+/// UI via the "cloud-error" event.
 #[tauri::command]
-async fn connect_with_slack(app: AppHandle) -> Result<(), String> {
+async fn authorize_in_browser(app: AppHandle) -> Result<(), String> {
     let cfg = RunnerConfig::load().map_err(|e| e.to_string())?;
     let label = machine_label();
-    tracing::info!("IPC connect_with_slack: saas_url={} label={label}", cfg.saas_url);
+    tracing::info!("IPC authorize_in_browser: saas_url={} label={label}", cfg.saas_url);
     let session = connect::start(&cfg.saas_url, Some(&label))
         .await
         .map_err(|e| e.to_string())?;
@@ -368,10 +369,10 @@ pub fn run() {
         })
         .invoke_handler(tauri::generate_handler![
             get_status,
-            login,
+            save_runner_token,
             logout,
             add_allowed_cwd,
-            connect_with_slack,
+            authorize_in_browser,
             list_agents,
             install_agent
         ])

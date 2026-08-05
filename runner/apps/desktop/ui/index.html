@@ -33,11 +33,17 @@
   </div>
 
   <div id="login-card" class="card" style="display:none">
-    <button id="connect-btn" onclick="doConnect()">Connect with Slack</button>
+    <button id="connect-btn" onclick="doConnect()">Authorize this machine</button>
+    <div style="font-size:12px;color:#888;margin-top:6px">
+      Opens your Farol dashboard in the browser — approve there and this runner
+      is connected.
+    </div>
     <div id="connect-status" style="color:#888;font-size:12px;margin-top:6px"></div>
-    <div style="font-size:12px;color:#888;margin-top:12px">…or paste the runner token from your dashboard:</div>
-    <input id="token" placeholder="frl_…" type="password">
-    <button class="ghost" onclick="doLogin()">Connect workspace</button>
+    <details style="margin-top:12px">
+      <summary style="font-size:12px;color:#888;cursor:pointer">Advanced: paste a runner token</summary>
+      <input id="token" placeholder="frl_…" type="password">
+      <button class="ghost" onclick="doSaveToken()">Save token</button>
+    </details>
     <div id="login-error" style="color:#ff3b30;font-size:12px;white-space:pre-wrap"></div>
   </div>
 
@@ -130,18 +136,18 @@
     try {
       // Returns once the browser is opened; approval continues in the
       // background and resolves via status-changed / cloud-error events.
-      await invoke('connect_with_slack');
+      await invoke('authorize_in_browser');
     } catch (e) {
       resetConnect();
       showError(e);
     }
   }
 
-  async function doLogin() {
+  async function doSaveToken() {
     const token = document.getElementById('token').value.trim();
     if (!token) { showError('token is empty'); return; }
     try {
-      await invoke('login', { token });
+      await invoke('save_runner_token', { token });
       refresh();
     } catch (e) { showError(e); }
   }
