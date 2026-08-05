@@ -59,15 +59,15 @@ export default function Dashboard() {
   });
   const slackParam = new URLSearchParams(window.location.search).get("slack");
   const { data: overview } = trpc.workspace.overview.useQuery(
-    { workspaceId: sel.selected!.id },
+    { workspaceId: (sel.selected?.id ?? 0) },
     { enabled: !!sel.selected, refetchInterval: 15000 },
   );
   const { data: memStats } = trpc.memory.stats.useQuery(
-    { workspaceId: sel.selected!.id },
+    { workspaceId: (sel.selected?.id ?? 0) },
     { enabled: !!sel.selected && !!overview?.workspace.slackTeamId },
   );
   const { data: importStatus } = trpc.slack.importStatus.useQuery(
-    { workspaceId: sel.selected!.id },
+    { workspaceId: (sel.selected?.id ?? 0) },
     {
       enabled: !!sel.selected && !!overview?.workspace.slackTeamId,
       refetchInterval: (q) =>
