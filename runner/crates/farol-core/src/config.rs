@@ -97,12 +97,13 @@ impl RunnerConfig {
     /// cloud routes to the first agent announced, so one stale entry at the
     /// front of the list swallowed every turn.
     fn retire_legacy_agents(&mut self) -> bool {
+        // Unconditionally: `claude --acp` resolves (the CLI is there, the flag
+        // is not), so "is it installed" cannot tell a working entry from a
+        // broken one. The catalog covers both names; a person who wants their
+        // own command can add it under a name we do not own.
         const RETIRED: &[&str] = &["claude-code", "gemini"];
         let before = self.agents.len();
-        self.agents.retain(|a| {
-            !RETIRED.contains(&a.name.as_str())
-                || crate::agents::is_installed(&a.command, None)
-        });
+        self.agents.retain(|a| !RETIRED.contains(&a.name.as_str()));
         // Whatever the catalog offers should be listed, even if absent: the
         // panel shows it as installable and `installed_agent_names` filters.
         for profile in crate::agents::BASELINE {

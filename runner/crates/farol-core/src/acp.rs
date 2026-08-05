@@ -175,7 +175,16 @@ impl AcpClient {
             .map_err(|e| anyhow!("{method} failed: {e}"))
     }
 
+    /// The handshake, on a leash. An adapter that starts but never answers —
+    /// a wrong flag, a wrapper waiting to download itself — used to leave the
+    /// turn silent in Slack forever; now it fails, and says so.
     pub async fn initialize(&self) -> Result<()> {
+        tokio::time::timeout(std::time::Duration::from_secs(30), self.initialize_inner())
+            .await
+            .map_err(|_| anyhow!("the agent did not answer the ACP handshake in 30s"))?
+    }
+
+    async fn initialize_inner(&self) -> Result<()> {
         self.call(
             "initialize",
             json!({
