@@ -115,7 +115,7 @@ export const runnerRouter = createRouter({
     .mutation(async ({ ctx, input }) => {
       await requireMembership(input.workspaceId, ctx.user.id);
       const db = getDb();
-      const token = `ovr_${randomBytes(24).toString("hex")}`;
+      const token = `frl_${randomBytes(24).toString("hex")}`;
       const [r] = await db
         .insert(runners)
         .values({
@@ -156,7 +156,7 @@ export const runnerRouter = createRouter({
       return { ok: true };
     }),
 
-  /** INTERNAL: ov-cloud validates a runner token against this endpoint. */
+  /** INTERNAL: cloud validates a runner token against this endpoint. */
   validate: publicQuery
     .input(z.object({ token: z.string() }))
     .query(async ({ input }) => {

@@ -1,0 +1,91 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Farol Runner</title>
+<style>
+  :root { color-scheme: light dark; }
+  body { font-family: -apple-system, "Segoe UI", sans-serif; margin: 0; padding: 24px; }
+  h1 { font-size: 18px; margin: 0 0 4px; }
+  .sub { color: #888; font-size: 12px; margin-bottom: 20px; }
+  .card { border: 1px solid #4444; border-radius: 10px; padding: 16px; margin-bottom: 14px; }
+  .row { display: flex; justify-content: space-between; font-size: 14px; padding: 4px 0; }
+  .dot { width: 9px; height: 9px; border-radius: 50%; display: inline-block; margin-right: 6px; }
+  .ok { background: #34c759; } .bad { background: #ff3b30; } .idle { background: #999; }
+  input { width: 100%; box-sizing: border-box; padding: 8px; border-radius: 6px;
+          border: 1px solid #5555; background: transparent; color: inherit; margin: 6px 0; }
+  button { width: 100%; padding: 9px; border: 0; border-radius: 8px; cursor: pointer;
+           background: #0a84ff; color: white; font-weight: 600; margin-top: 6px; }
+  button.ghost { background: transparent; border: 1px solid #0a84ff; color: #0a84ff; }
+</style>
+</head>
+<body>
+  <h1>Farol Runner</h1>
+  <div class="sub">Thin client · Slack ↔ your local agent</div>
+
+  <div id="status-card" class="card">
+    <div class="row"><span>Connection</span>
+      <span><span id="conn-dot" class="dot idle"></span><span id="conn-text">—</span></span></div>
+    <div class="row"><span>Workspace</span><span id="ws">—</span></div>
+    <div class="row"><span>Agents</span><span id="agents">—</span></div>
+    <div class="row"><span>Active tasks</span><span id="tasks">0</span></div>
+  </div>
+
+  <div id="login-card" class="card" style="display:none">
+    <div style="font-size:13px">Paste the runner token from your dashboard:</div>
+    <input id="token" placeholder="frl_…" type="password">
+    <button onclick="doLogin()">Connect workspace</button>
+    <div id="login-error" style="color:#ff3b30;font-size:12px;white-space:pre-wrap"></div>
+  </div>
+
+  <div class="card">
+    <button class="ghost" onclick="addCwd()">Add allowed project folder…</button>
+    <button class="ghost" id="logout-btn" style="display:none" onclick="doLogout()">Disconnect</button>
+  </div>
+
+<script>
+  const { invoke } = window.__TAURI__.core;
+  const { listen } = window.__TAURI__.event;
+  const { open } = window.__TAURI__.dialog || {};
+
+  async function refresh() {
+    const s = await invoke('get_status');
+    document.getElementById('conn-dot').className = 'dot ' + (s.connected ? 'ok' : 'idle');
+    document.getElementById('conn-text').textContent = s.connected ? 'Connected' : 'Offline';
+    document.getElementById('ws').textContent = s.workspace_id || '—';
+    document.getElementById('agents').textContent = s.agents.join(', ') || '—';
+    document.getElementById('tasks').textContent = s.active_tasks;
+    document.getElementById('login-card').style.display = s.logged_in ? 'none' : 'block';
+    document.getElementById('logout-btn').style.display = s.logged_in ? 'block' : 'none';
+  }
+
+  function showError(e) {
+    document.getElementById('login-card').style.display = 'block';
+    document.getElementById('login-error').textContent = String(e && e.message || e);
+  }
+  window.onerror = (m, s, l, c, err) => showError(err || m);
+  window.onunhandledrejection = ev => showError(ev.reason);
+
+  async function doLogin() {
+    const token = document.getElementById('token').value.trim();
+    if (!token) { showError('token is empty'); return; }
+    try {
+      await invoke('login', { token });
+      refresh();
+    } catch (e) { showError(e); }
+  }
+
+  async function doLogout() { await invoke('logout'); refresh(); }
+
+  async function addCwd() {
+    if (!open) return;
+    const dir = await open({ directory: true });
+    if (dir) await invoke('add_allowed_cwd', { path: dir });
+  }
+
+  listen('status-changed', refresh);
+  listen('cloud-error', e => alert(e.payload));
+  refresh();
+</script>
+</body>
+</html>

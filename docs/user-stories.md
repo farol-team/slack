@@ -1,4 +1,4 @@
-# User Stories — Slack ↔ Local Agent + Shared OV Memory
+# User Stories — Slack ↔ Local Agent + Shared Farol
 
 Product framing:
 
@@ -23,13 +23,13 @@ appears in my Slack; channels the bot is in are synced to the dashboard.
 **A2. Instant history import** — ✅
 As an admin, after installing I want the bot to import existing channel history, so the
 team memory is useful from day one; I can watch import progress in the dashboard.
-*Code: `ImportManager` (ov-cloud/app/importer.py), `slack.importStatus`.*
+*Code: `ImportManager` (cloud/app/importer.py), `slack.importStatus`.*
 
 **A3. Memory tenant auto-provisioning** — ❌ (P0)
 As an admin, I don't want to configure OpenViking manually: installing the Slack app must
 create the OV account for the workspace and register users, so agent memory keys actually
 work.
-*Gap: `create_account`/`register_user` (ov-cloud/app/memory.py) are never called;
+*Gap: `create_account`/`register_user` (cloud/app/memory.py) are never called;
 `ovAccountId`/`ovUserKey` are random strings unknown to OpenViking.*
 
 ---
@@ -120,7 +120,7 @@ As a user, my agent transparently gets a "team-memory" MCP server with **my** ke
 task starts, and can search/read what I can read.
 *Gap: `AssignTask.memory` plumbing exists end-to-end, but no public MCP endpoint is
 deployed (`MEMORY_MCP_URL` points at nothing); OV sits inside the docker network. Needs
-an MCP proxy in ov-cloud that enforces the user key.*
+an MCP proxy in cloud that enforces the user key.*
 
 **D4. Threads become long-term memories** — ❌
 As a team, finished task threads and discussions get committed as sessions so OV distills
@@ -162,7 +162,7 @@ As an owner, I set a plan; free plan limits tasks/day.
 - **N3. Task persistence**: write task create/finish into the existing `tasks` table via
   internal API (dashboard "Recent tasks" is empty today; cloud restart loses everything).
 - **N4. Installation cache invalidation**: reinstalling the Slack app currently requires
-  an ov-cloud restart (unbounded per-team cache).
+  an cloud restart (unbounded per-team cache).
 - **N5. Secrets**: encrypt bot tokens at rest (KMS note already in code), runner-token
   rotation.
 

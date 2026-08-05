@@ -1,13 +1,13 @@
-# AGENTS.md — Slack Memory / Agent Bridge
+# AGENTS.md — Farol
 
 ## Project overview
 
-Monorepo of three components that together form the "Slack Memory / Agent Bridge"
+Monorepo of three components that together form the "Farol"
 service: mentioning the bot in Slack turns into a task executed by a local coding
 agent on a developer's machine, while team memory is stored in OpenViking.
 
 ```
- Slack ──Events API──► ov-cloud (Python/FastAPI) ──wss──► ov-runner (Rust/Tauri)
+ Slack ──Events API──► cloud (Python/FastAPI) ──wss──► runner (Rust/Tauri)
       ◄──render to thread──     ▲                            │ spawn
                                 │ tRPC (x-internal-secret)   ▼
                           app/ (SaaS panel,           local agent
@@ -17,12 +17,12 @@ agent on a developer's machine, while team memory is stored in OpenViking.
 - **`app/`** — SaaS control plane: web UI on React 19 + Vite, backend on
   Hono + tRPC, MySQL via Drizzle ORM, authentication via Kimi OAuth.
   Stores workspaces, runners, channels, tasks, and Slack installations (bot tokens).
-- **`ov-cloud/`** — cloud service (data plane) on Python/FastAPI: receives Slack
+- **`cloud/`** — cloud service (data plane) on Python/FastAPI: receives Slack
   Events (Slack Bolt), holds the `/runner/v1` WebSocket for runners, routes tasks
   (`TaskRouter`), streams events back to Slack, writes channel messages to OpenViking.
   The bot token is resolved per-team via `app/`'s tRPC API (`slack.installationByTeam`,
   `x-internal-secret` header); it does not store tokens itself.
-- **`ov-runner/`** — thin Rust client: Cargo workspace with the `crates/runner-core`
+- **`runner/`** — thin Rust client: Cargo workspace with the `crates/farol-core`
   core and a Tauri 2 desktop app in `apps/desktop`. Lives in the tray, holds an
   **outbound** wss connection to the cloud (zero open ports), executes tasks on a
   local agent via ACP (JSON-RPC 2.0 over stdio).
@@ -48,7 +48,7 @@ OpenViking MCP endpoint via `AssignTask.memory`.
 - Path aliases (vite + tsconfig): `@/* → src/*`, `@contracts/* → contracts/*`,
   `@db/* → db/*`.
 
-### ov-cloud/ (Python 3.12)
+### cloud/ (Python 3.12)
 - `app/protocol.py` — pydantic protocol models, mirror of `protocol.rs`.
 - `app/task_router.py` — runner registry and task lifecycle (in-memory).
 - `app/slack_app.py` — Slack Bolt: mentions, Approve/Deny/Stop buttons, IngestionBuffer.
@@ -56,11 +56,11 @@ OpenViking MCP endpoint via `AssignTask.memory`.
 - `app/main.py` — FastAPI: `/runner/v1` (WS), `/slack/events`, `/internal/import/*`
   (protected by `x-internal-secret`), `/healthz`.
 
-### ov-runner/ (Rust, edition 2021)
-- `crates/runner-core/src/` — `protocol.rs` (message contract, serde tagged union),
+### runner/ (Rust, edition 2021)
+- `crates/farol-core/src/` — `protocol.rs` (message contract, serde tagged union),
   `acp.rs` (ACP client), `cloud.rs` (WS loop with reconnect/backoff), `session.rs`
   (SessionManager), `config.rs` (config + OS keychain for the token).
-- `crates/runner-core/examples/headless.rs` — headless runner without the Tauri UI
+- `crates/farol-core/examples/headless.rs` — headless runner without the Tauri UI
   (dev debugging and E2E tests).
 - `apps/desktop/` — Tauri 2: `ui/index.html` (no bundler, withGlobalTauri),
   `src-tauri/` (tray, IPC commands, autostart).
@@ -81,24 +81,24 @@ npm run db:migrate    # drizzle-kit migrate
 npm run db:push       # drizzle-kit push
 ```
 
-### ov-cloud/ (Python)
+### cloud/ (Python)
 ```bash
 cp .env.example .env
 docker compose up --build   # brings up the service on :8000 + OpenViking on :1933
 # locally: pip install -r requirements.txt && uvicorn app.main:app --port 8000
 ```
 
-### ov-runner/ (Rust)
+### runner/ (Rust)
 ```bash
-cargo check                        # check the core (from ov-runner/ root)
+cargo check                        # check the core (from runner/ root)
 cd apps/desktop && npm install
 npm run dev                        # cargo tauri dev
 npm run build                      # cargo tauri build (.app/.msi/.deb)
 
 # headless runner without the Tauri UI (for dev/E2E):
-OV_RUNNER_TOKEN=ovr_... cargo run -p runner-core --example headless
+FAROL_RUNNER_TOKEN=frl_... cargo run -p farol-core --example headless
 ```
-The headless-mode token is taken from the `OV_RUNNER_TOKEN` env var, otherwise from
+The headless-mode token is taken from the `FAROL_RUNNER_TOKEN` env var, otherwise from
 the OS keychain; config is the standard `RunnerConfig::load()`.
 
 Requirements: Rust stable, Node 18+, Tauri 2 system dependencies.
@@ -106,7 +106,7 @@ Requirements: Rust stable, Node 18+, Tauri 2 system dependencies.
 ## Code conventions
 
 - **Documentation/comment language:** English everywhere. (Legacy comments in
-  `ov-cloud/` and `ov-runner/` may still be in Russian — translate opportunistically
+  `cloud/` and `runner/` may still be in Russian — translate opportunistically
   when touching them.)
 - **app/**: Prettier (double quotes, semi, trailing comma es5, width 80), ESLint flat
   config (tseslint recommended + react-hooks + react-refresh). tRPC procedures go
@@ -114,9 +114,9 @@ Requirements: Rust stable, Node 18+, Tauri 2 system dependencies.
   transformer — superjson. UI — shadcn components from `@/components/ui`.
 - **DB schema** (`app/db/schema.ts`): PKs are `serial()`; FKs referencing serial PKs
   must be `bigint("col", { mode: "number", unsigned: true })`. Enums — `mysqlEnum`.
-- **Cloud ↔ runner protocol is a double mirror**: `ov-runner/crates/runner-core/src/protocol.rs`
+- **Cloud ↔ runner protocol is a double mirror**: `runner/crates/farol-core/src/protocol.rs`
   (serde, `#[serde(tag = "type", rename_all = "snake_case")]`) and
-  `ov-cloud/app/protocol.py` (pydantic) must change in lockstep; snake_case tags and
+  `cloud/app/protocol.py` (pydantic) must change in lockstep; snake_case tags and
   field names match 1-to-1. The contract is verified by round-trip serialization.
 - Protocol messages: `hello`, `assign_task`, `task_event`, `permission_decision`,
   `cancel_task`, `task_result`, `ping`/`pong`, `error`.
@@ -126,20 +126,20 @@ Requirements: Rust stable, Node 18+, Tauri 2 system dependencies.
 - Vitest is configured in `app/` (`vitest.config.ts`, `node` environment, includes
   `api/**/*.test.ts` / `*.spec.ts`) — **no tests yet**; place new tests next to the
   code in `api/` matching these patterns.
-- No tests in `ov-cloud/` or `ov-runner/`; for the runner, a mock ACP agent and a
-  mock cloud speaking the protocol are planned (see `ov-runner/README.md`).
+- No tests in `cloud/` or `runner/`; for the runner, a mock ACP agent and a
+  mock cloud speaking the protocol are planned (see `runner/README.md`).
 - Minimal pre-submit check: `npm run check` + `npm run lint` (app),
-  `cargo check` (ov-runner), uvicorn import/startup (ov-cloud).
+  `cargo check` (runner), uvicorn import/startup (cloud).
 
 ## Security
 
-- Secrets only via env: `app/.env.example`, `ov-cloud/.env.example` are templates;
+- Secrets only via env: `app/.env.example`, `cloud/.env.example` are templates;
   do not commit real `.env` files (covered by `.gitignore`).
-- Runner tokens (random `ovr_*`, issued by `runner.createToken`, validated via
+- Runner tokens (random `frl_*`, issued by `runner.createToken`, validated via
   `runner.validate` — no offline/legacy format): the DB stores only the SHA-256 hash
   (`runners.tokenHash`); on the client the token lives in the OS keychain, not in a file.
 - Slack bot tokens are stored in `slack_installations` (note in code: encrypt via KMS
-  in production). Internal SaaS ↔ ov-cloud calls are protected by the
+  in production). Internal SaaS ↔ cloud calls are protected by the
   `x-internal-secret` header (`INTERNAL_API_SECRET`).
 - On the runner, `allowed_cwds` is a hard allowlist of task directories; destructive
   agent actions are confirmed via Approve/Deny buttons in Slack.
@@ -147,17 +147,17 @@ Requirements: Rust stable, Node 18+, Tauri 2 system dependencies.
 
 ## Deployment and environment
 
-- **ov-cloud**: `docker compose up --build` (Dockerfile on `python:3.12-slim`, uvicorn
+- **cloud**: `docker compose up --build` (Dockerfile on `python:3.12-slim`, uvicorn
   on :8000) + `volcengine/openviking:latest` sidecar on :1933 (volume `ov-data`).
 - **app**: `npm run build && npm start`; static files from `dist/public`, server — `dist/boot.js`.
-- **ov-runner**: Tauri bundles (`npm run build` in `apps/desktop`); signing and
+- **runner**: Tauri bundles (`npm run build` in `apps/desktop`); signing and
   auto-updates (`tauri-plugin-updater`) are planned.
-- Slack app: Request URL → `https://<host>/slack/events` (ov-cloud), Redirect URL →
+- Slack app: Request URL → `https://<host>/slack/events` (cloud), Redirect URL →
   `https://<saas-host>/api/slack/callback` (app); scopes and events are listed in
-  `ov-cloud/README.md`. A dev Slack app can be created from the
-  `ov-cloud/slack-app-manifest.yaml` manifest (replace `request_url` with your tunnel).
+  `cloud/README.md`. A dev Slack app can be created from the
+  `cloud/slack-app-manifest.yaml` manifest (replace `request_url` with your tunnel).
 
-## Known MVP limitations (from ov-cloud/README.md)
+## Known MVP limitations (from cloud/README.md)
 
 Task state is in-memory (`TaskRouter`) (production: Postgres + Redis); routing picks
 the first runner in a workspace; Slack streaming is 1 edit/sec (production:

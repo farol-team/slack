@@ -73,7 +73,7 @@ export default function Home() {
       <header className="border-b sticky top-0 bg-background/80 backdrop-blur z-10">
         <div className="max-w-6xl mx-auto px-6 h-14 flex items-center justify-between">
           <div className="flex items-center gap-2 font-semibold">
-            <Brain className="h-5 w-5 text-primary" /> OV Memory
+            <Brain className="h-5 w-5 text-primary" /> Farol
           </div>
           <div className="flex items-center gap-3">
             <a href="#pricing" className="text-sm text-muted-foreground hover:text-foreground">Тарифы</a>
@@ -175,7 +175,7 @@ export default function Home() {
 
       <footer className="border-t">
         <div className="max-w-6xl mx-auto px-6 py-8 text-sm text-muted-foreground flex justify-between">
-          <span>OV Memory — Slack Memory Layer for AI Agents</span>
+          <span>Farol — Slack Memory Layer for AI Agents</span>
           <span>OpenViking · ACP · MCP</span>
         </div>
       </footer>

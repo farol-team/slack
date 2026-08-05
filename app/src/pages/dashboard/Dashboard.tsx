@@ -132,7 +132,7 @@ export default function Dashboard() {
           <Card>
             <CardHeader><CardTitle className="flex items-center gap-2"><Slack className="h-5 w-5" /> Шаг 1. Подключите Slack</CardTitle></CardHeader>
             <CardContent className="text-sm text-muted-foreground space-y-3">
-              <p>Установите Slack-приложение OV Memory в ваш workspace (OAuth). После установки начнётся ingestion сообщений каналов, в которых состоит бот, включая исторический импорт.</p>
+              <p>Установите Slack-приложение Farol в ваш workspace (OAuth). После установки начнётся ingestion сообщений каналов, в которых состоит бот, включая исторический импорт.</p>
               {overview?.workspace.slackTeamId ? (
                 <div className="space-y-2">
                   <Badge>Подключён: {overview.workspace.slackTeamId}</Badge>

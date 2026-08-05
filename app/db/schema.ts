@@ -70,7 +70,7 @@ export const runners = mysqlTable("runners", {
     .notNull()
     .references(() => workspaces.id),
   label: varchar("label", { length: 255 }).notNull(),
-  /** SHA-256 of the issued `ovr_...` token — the token itself is never stored. */
+  /** SHA-256 of the issued `frl_...` token — the token itself is never stored. */
   tokenHash: varchar("tokenHash", { length: 64 }).notNull().unique(),
   agents: json("agents").$type<string[]>(),
   version: varchar("version", { length: 32 }),

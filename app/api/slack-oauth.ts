@@ -73,7 +73,7 @@ export const slackRouter = createRouter({
       return { url };
     }),
 
-  /** INTERNAL for ov-cloud: bot token by Slack team id.
+  /** INTERNAL for cloud: bot token by Slack team id.
    *  Guarded by a shared secret header. */
   installationByTeam: publicQuery
     .input(z.object({ teamId: z.string() }))
@@ -101,7 +101,7 @@ export const slackRouter = createRouter({
       };
     }),
 
-  /** Import progress proxy: workspace -> ov-cloud job status. */
+  /** Import progress proxy: workspace -> cloud job status. */
   importStatus: authedQuery
     .input(z.object({ workspaceId: z.number() }))
     .query(async ({ ctx, input }) => {
@@ -109,7 +109,7 @@ export const slackRouter = createRouter({
       const db = getDb();
       const [ws] = await db.select().from(workspaces).where(eq(workspaces.id, input.workspaceId)).limit(1);
       if (!ws?.slackTeamId) return { state: "not_connected" as const };
-      const cloudUrl = (process.env.OV_CLOUD_URL ?? "").replace(/\/$/, "");
+      const cloudUrl = (process.env.FAROL_CLOUD_URL ?? "").replace(/\/$/, "");
       if (!cloudUrl || !INTERNAL_SECRET) return { state: "unavailable" as const };
       try {
         const res = await fetch(`${cloudUrl}/internal/import/${ws.slackTeamId}/status`, {
@@ -241,15 +241,15 @@ export async function handleSlackCallback(
     // channel sync is non-fatal
   }
 
-  // Kick off the historical import in ov-cloud (fire-and-forget).
+  // Kick off the historical import in cloud (fire-and-forget).
   void triggerHistoryImport(data.team.id);
 
   return { redirectTo: "/dashboard?slack=connected" };
 }
 
-/** Fire-and-forget: ask ov-cloud to start the historical import. */
+/** Fire-and-forget: ask cloud to start the historical import. */
 export async function triggerHistoryImport(teamId: string): Promise<void> {
-  const cloudUrl = (process.env.OV_CLOUD_URL ?? "").replace(/\/$/, "");
+  const cloudUrl = (process.env.FAROL_CLOUD_URL ?? "").replace(/\/$/, "");
   if (!cloudUrl || !INTERNAL_SECRET) return;
   try {
     await fetch(`${cloudUrl}/internal/import/start`, {
