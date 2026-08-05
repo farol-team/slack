@@ -144,6 +144,13 @@
 
   async function doLogout() { await invoke('logout'); refresh(); }
 
+  // An update lands beside the running copy; saying so is the only way a
+  // person knows to restart, and the only place the version in the footer
+  // stops matching what they will get next time.
+  listen('update-installed', e => {
+    const v = document.getElementById('version');
+    v.textContent = `v${v.textContent.replace(/^v/, '')} — updated to ${e.payload}, restart to apply`;
+  });
   listen('status-changed', () => { resetConnect(); refresh(); });
   listen('cloud-error', e => { resetConnect(); showError(e.payload); });
   refresh();

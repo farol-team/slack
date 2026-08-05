@@ -2,6 +2,9 @@
 # signed, notarized .dmg, plus the headless binaries for servers and CI.
 # Linux is parked — see the build matrix.
 #
+# The tag carries the version (runner-vX.Y.Z), and the app updates itself from
+# the `latest.json` published here — so a release tag must never be reused.
+#
 # Optional repository secrets — when APPLE_CERTIFICATE is absent the macOS
 # builds still succeed, just unsigned:
 #   APPLE_CERTIFICATE           base64 .p12 Developer ID Application cert
@@ -136,10 +139,41 @@ jobs:
           IDENTITY=$(security find-identity -v -p codesigning $KEYCHAIN \
             | awk -F'"' '/Developer ID Application/ {print $2; exit}')
           echo "APPLE_SIGNING_IDENTITY=$IDENTITY" >> $GITHUB_ENV
+      # The tag is the version. Retagging the same one is fine for a manual
+      # download and fatal for an updater: it compares versions, so a build
+      # that says 0.1.0 forever can never replace itself.
+      - name: Version from the tag
+        run: |
+          version="${GITHUB_REF_NAME#runner-v}"
+          case "$version" in
+            [0-9]*.[0-9]*.[0-9]*) ;;
+            *) echo "tag $GITHUB_REF_NAME is not runner-vX.Y.Z"; exit 1 ;;
+          esac
+          echo "APP_VERSION=$version" >> $GITHUB_ENV
+          python3 - "$version" <<'PY'
+          import json, sys, pathlib
+          v = sys.argv[1]
+          conf = pathlib.Path("src-tauri/tauri.conf.json")
+          d = json.loads(conf.read_text()); d["version"] = v
+          conf.write_text(json.dumps(d, indent=2) + "\n")
+          cargo = pathlib.Path("src-tauri/Cargo.toml")
+          lines = cargo.read_text().split("\n")
+          for i, line in enumerate(lines):
+              if line.startswith("version = "):
+                  lines[i] = f'version = "{v}"'
+                  break
+          cargo.write_text("\n".join(lines))
+          print("building version", v)
+          PY
+
       - name: Build .dmg (universal)
         env:
           # Shown in the app footer: the tag gets moved, the commit does not.
           FAROL_BUILD_SHA: ${{ github.sha }}
+          # Signs the updater artifact; without it the bundler emits none and
+          # the feed below would advertise something no app would accept.
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
           APPLE_ID: ${{ secrets.APPLE_ID }}
           APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
@@ -164,16 +198,47 @@ jobs:
           xcrun notarytool submit "$dmg" --apple-id "$APPLE_ID" \
             --password "$APPLE_PASSWORD" --team-id "$APPLE_TEAM_ID" --wait
           xcrun stapler staple "$dmg"
-      - name: Stage asset
+      - name: Stage assets and the update feed
         run: |
-          dmg=$(ls "$GITHUB_WORKSPACE"/runner/target/universal-apple-darwin/release/bundle/dmg/*.dmg | head -1)
+          bundle="$GITHUB_WORKSPACE/runner/target/universal-apple-darwin/release/bundle"
+          dmg=$(ls "$bundle"/dmg/*.dmg | head -1)
           [ -n "$dmg" ] || { echo "no .dmg produced"; exit 1; }
-          # Stable name so releases/latest/download/... keeps working.
+          # Stable names so releases/latest/download/... keeps working.
           cp "$dmg" farol-runner-macos.dmg
+
+          # The updater takes the tarball, not the disk image, and refuses one
+          # whose signature it cannot verify — so both ship or neither does.
+          tar=$(ls "$bundle"/macos/*.app.tar.gz | head -1)
+          sig=$(ls "$bundle"/macos/*.app.tar.gz.sig | head -1)
+          [ -n "$tar" ] && [ -n "$sig" ] || { echo "no updater artifact"; exit 1; }
+          cp "$tar" farol-runner-macos.app.tar.gz
+
+          url="https://github.com/${GITHUB_REPOSITORY}/releases/latest/download/farol-runner-macos.app.tar.gz"
+          python3 - "$APP_VERSION" "$(cat "$sig")" "$url" > latest.json <<'PY'
+          import json, sys, datetime
+          version, signature, url = sys.argv[1], sys.argv[2], sys.argv[3]
+          # One universal build serves both architectures; the feed still has
+          # to name them, because the app looks itself up by platform key.
+          platform = {"signature": signature, "url": url}
+          print(json.dumps({
+              "version": version,
+              "notes": "Farol Runner " + version,
+              "pub_date": datetime.datetime.now(datetime.UTC)
+                  .isoformat(timespec="seconds").replace("+00:00", "Z"),
+              "platforms": {
+                  "darwin-aarch64": platform,
+                  "darwin-x86_64": platform,
+              },
+          }, indent=2))
+          PY
+          cat latest.json
       - uses: actions/upload-artifact@v4
         with:
-          name: farol-runner-macos.dmg
-          path: runner/apps/desktop/farol-runner-macos.dmg
+          name: farol-runner-macos
+          path: |
+            runner/apps/desktop/farol-runner-macos.dmg
+            runner/apps/desktop/farol-runner-macos.app.tar.gz
+            runner/apps/desktop/latest.json
           if-no-files-found: error
 
   release:
@@ -192,7 +257,8 @@ jobs:
           body: |
             **macOS** — download `farol-runner-macos.dmg`, drag Farol Runner to
             Applications and launch it. Signed and notarized, so it opens
-            without Gatekeeper warnings.
+            without Gatekeeper warnings. Installed copies update themselves
+            from `latest.json` in this release and apply it on the next launch.
 
             **Headless binaries** (servers, CI) — macOS arm64 and x64 for now;
             `chmod +x` and run, and it prints a URL that authorizes the runner

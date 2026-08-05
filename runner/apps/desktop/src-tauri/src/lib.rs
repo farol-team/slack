@@ -364,6 +364,22 @@ async fn handle_cloud_message(app: AppHandle, msg: CloudMessage) {
     }
 }
 
+/// Ask the release feed whether a newer build exists and install it if so.
+/// Returns the version installed, or None when this is already the latest.
+async fn check_for_update(app: AppHandle) -> Result<Option<String>, String> {
+    use tauri_plugin_updater::UpdaterExt;
+    let updater = app.updater().map_err(|e| e.to_string())?;
+    let Some(update) = updater.check().await.map_err(|e| e.to_string())? else {
+        return Ok(None);
+    };
+    let version = update.version.clone();
+    update
+        .download_and_install(|_chunk, _total| {}, || {})
+        .await
+        .map_err(|e| e.to_string())?;
+    Ok(Some(version))
+}
+
 // ---------- Tauri bootstrap ----------
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -371,6 +387,7 @@ pub fn run() {
 
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
+        .plugin(tauri_plugin_updater::Builder::new().build())
         .manage(AppState {
             status: RwLock::new(RunnerStatus::default()),
             session_manager: RwLock::new(None),
@@ -420,6 +437,21 @@ pub fn run() {
                     _ => {}
                 })
                 .build(app)?;
+
+            // A tray app is a thing people forget is running: it has to keep
+            // itself current without being asked. The install lands beside the
+            // running copy and takes effect on the next launch.
+            let updater_handle = app.handle().clone();
+            tauri::async_runtime::spawn(async move {
+                match check_for_update(updater_handle.clone()).await {
+                    Ok(Some(version)) => {
+                        tracing::info!("updated to {version}, pending restart");
+                        let _ = updater_handle.emit("update-installed", version);
+                    }
+                    Ok(None) => tracing::info!("no update available"),
+                    Err(e) => tracing::warn!("update check failed: {e}"),
+                }
+            });
 
             // Auto-connect if credentials exist.
             let handle = app.handle().clone();

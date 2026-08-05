@@ -32,6 +32,15 @@
     ],
     "icon": [
       "icons/icon.png"
-    ]
+    ],
+    "createUpdaterArtifacts": true
+  },
+  "plugins": {
+    "updater": {
+      "endpoints": [
+        "https://github.com/farol-team/slack/releases/latest/download/latest.json"
+      ],
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IEFCQTZDMzMwOTlCOEE4RApSV1NOaXBzSk0yeTZDc0FaZ2N3QUhRS3B1ODZtYkFjbzFkUE9ja1RxZ2wvRkhMRERsV1lQRURGWQo="
+    }
   }
 }
