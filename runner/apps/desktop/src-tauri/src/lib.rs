@@ -147,6 +147,100 @@ async fn logout(app: AppHandle) -> Result<(), String> {
     Ok(())
 }
 
+/// What the panel says about one pinned adapter. Two states, because a third
+/// would be a guess: either the command is on this machine or it is not.
+#[derive(Clone, Serialize)]
+struct AgentRow {
+    name: String,
+    label: String,
+    package: String,
+    docs_url: String,
+    /// Where the command was found, or null for nowhere.
+    resolved: Option<String>,
+}
+
+/// The prefix the runner installs adapters into — its own app data dir, never
+/// the person's node installation.
+fn agents_prefix(app: &AppHandle) -> Result<std::path::PathBuf, String> {
+    let dir = app
+        .path()
+        .app_data_dir()
+        .map_err(|e| e.to_string())?
+        .join("agents");
+    std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
+    Ok(dir)
+}
+
+#[tauri::command]
+async fn list_agents(app: AppHandle) -> Result<Vec<AgentRow>, String> {
+    let prefix = agents_prefix(&app)?;
+    Ok(farol_core::agents::BASELINE
+        .iter()
+        .map(|p| AgentRow {
+            name: p.name.into(),
+            label: p.label.into(),
+            package: p.package.into(),
+            docs_url: p.docs_url.into(),
+            resolved: farol_core::agents::resolve(p.command, Some(&prefix))
+                .map(|path| path.display().to_string()),
+        })
+        .collect())
+}
+
+/// Fetch one adapter into the runner's own prefix and point config.json at the
+/// binary that lands there. Nothing is installed until this is pressed.
+#[tauri::command]
+async fn install_agent(app: AppHandle, name: String) -> Result<AgentRow, String> {
+    let profile = farol_core::agents::profile_for(&name)
+        .ok_or_else(|| format!("unknown agent: {name}"))?;
+    let prefix = agents_prefix(&app)?;
+
+    let output = tokio::process::Command::new("npm")
+        .args(["install", "-g", "--prefix"])
+        .arg(&prefix)
+        .arg(profile.package)
+        .output()
+        .await
+        .map_err(|e| format!("npm is required to install adapters: {e}"))?;
+    if !output.status.success() {
+        return Err(String::from_utf8_lossy(&output.stderr)
+            .lines()
+            .last()
+            .unwrap_or("npm install failed")
+            .to_string());
+    }
+
+    let resolved = farol_core::agents::resolve(profile.command, Some(&prefix))
+        .ok_or_else(|| format!("{} installed but {} not found", profile.package, profile.command))?;
+
+    // Record the absolute path: the runner spawns the adapter itself and its
+    // PATH is the desktop session's, which need not contain our prefix.
+    let mut cfg = RunnerConfig::load().map_err(|e| e.to_string())?;
+    let command = resolved.display().to_string();
+    let args: Vec<String> = profile.args.iter().map(|a| (*a).to_string()).collect();
+    match cfg.agents.iter_mut().find(|a| a.name == profile.name) {
+        Some(entry) => {
+            entry.command = command.clone();
+            entry.args = args;
+        }
+        None => cfg.agents.push(farol_core::config::AgentEntry {
+            name: profile.name.into(),
+            command: command.clone(),
+            args,
+        }),
+    }
+    cfg.save().map_err(|e| e.to_string())?;
+    let _ = app.emit("status-changed", ());
+
+    Ok(AgentRow {
+        name: profile.name.into(),
+        label: profile.label.into(),
+        package: profile.package.into(),
+        docs_url: profile.docs_url.into(),
+        resolved: Some(command),
+    })
+}
+
 /// Pick a directory to add to the agent's allowed working dirs.
 #[tauri::command]
 async fn add_allowed_cwd(path: String) -> Result<(), String> {
@@ -243,7 +337,13 @@ pub fn run() {
             session_manager: RwLock::new(None),
         })
         .invoke_handler(tauri::generate_handler![
-            get_status, login, logout, add_allowed_cwd, connect_with_slack
+            get_status,
+            login,
+            logout,
+            add_allowed_cwd,
+            connect_with_slack,
+            list_agents,
+            install_agent
         ])
         .setup(|app| {
             // Tray: Show / Quit

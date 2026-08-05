@@ -146,14 +146,17 @@ export FAROL_ALLOWED_CWDS=$HOME/projects   # dirs the agent may touch
               </pre>
               <p className="text-sm text-muted-foreground">
                 The coding agent is a separate program the runner talks to over
-                ACP. Pick one in{" "}
+                ACP. The desktop app installs one on a press; headless, fetch an
+                adapter yourself and name it in{" "}
                 <code>~/.config/farol-runner/config.json</code>:
               </p>
               <pre className="bg-muted p-3 rounded-md text-xs overflow-x-auto">
-{`{
+{`npm install -g @agentclientprotocol/claude-agent-acp   # or codex-acp, opencode-ai
+
+{
   "agents": [
-    { "name": "claude-code", "command": "npx",
-      "args": ["-y", "@zed-industries/claude-code-acp"] },
+    { "name": "claude", "command": "claude-agent-acp", "args": [] },
+    { "name": "codex", "command": "codex-acp", "args": [] },
     { "name": "opencode", "command": "opencode", "args": ["acp"] }
   ]
 }`}

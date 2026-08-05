@@ -49,20 +49,16 @@ impl Default for RunnerConfig {
             cloud_url: "wss://hooks.farol.team/runner/v1".into(),
             saas_url: default_saas_url(),
             workspace_id: None,
-            agents: vec![
-                // The Claude Code CLI has no ACP mode of its own — Zed's
-                // adapter wraps it and speaks ACP over stdio.
-                AgentEntry {
-                    name: "claude-code".into(),
-                    command: "npx".into(),
-                    args: vec!["-y".into(), "@zed-industries/claude-code-acp".into()],
-                },
-                AgentEntry {
-                    name: "opencode".into(),
-                    command: "opencode".into(),
-                    args: vec!["acp".into()],
-                },
-            ],
+            // The pinned ACP adapters; none of them ships with the runner, so
+            // an entry here is an offer, not a promise that it is installed.
+            agents: crate::agents::BASELINE
+                .iter()
+                .map(|p| AgentEntry {
+                    name: p.name.into(),
+                    command: p.command.into(),
+                    args: p.args.iter().map(|a| (*a).to_string()).collect(),
+                })
+                .collect(),
             allowed_cwds: vec![],
             autostart: true,
         }

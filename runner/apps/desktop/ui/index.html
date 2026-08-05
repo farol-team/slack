@@ -42,6 +42,14 @@
   </div>
 
   <div class="card">
+    <div style="font-size:12px;color:#888;margin-bottom:8px">
+      Coding agents — the runner carries none, each arrives on a press.
+    </div>
+    <div id="agent-list"></div>
+    <div id="agent-error" style="color:#ff3b30;font-size:12px;white-space:pre-wrap"></div>
+  </div>
+
+  <div class="card">
     <button class="ghost" onclick="addCwd()">Add allowed project folder…</button>
     <button class="ghost" id="logout-btn" style="display:none" onclick="doLogout()">Disconnect</button>
   </div>
@@ -60,6 +68,47 @@
     document.getElementById('tasks').textContent = s.active_tasks;
     document.getElementById('login-card').style.display = s.logged_in ? 'none' : 'block';
     document.getElementById('logout-btn').style.display = s.logged_in ? 'block' : 'none';
+  }
+
+  async function refreshAgents() {
+    const rows = await invoke('list_agents');
+    const box = document.getElementById('agent-list');
+    box.innerHTML = '';
+    for (const a of rows) {
+      const row = document.createElement('div');
+      row.className = 'row';
+      const left = document.createElement('span');
+      left.textContent = a.label;
+      const right = document.createElement('span');
+      if (a.resolved) {
+        right.innerHTML = '<span class="dot ok"></span>ready';
+        right.title = a.resolved;
+      } else {
+        const btn = document.createElement('button');
+        btn.className = 'ghost';
+        btn.textContent = 'Install';
+        btn.style.margin = '0';
+        btn.style.width = 'auto';
+        btn.onclick = () => installAgent(a.name, btn);
+        right.appendChild(btn);
+      }
+      row.append(left, right);
+      box.appendChild(row);
+    }
+  }
+
+  async function installAgent(name, btn) {
+    document.getElementById('agent-error').textContent = '';
+    btn.disabled = true;
+    btn.textContent = 'Installing…';
+    try {
+      await invoke('install_agent', { name });
+      await refreshAgents();
+    } catch (e) {
+      document.getElementById('agent-error').textContent = String(e && e.message || e);
+      btn.disabled = false;
+      btn.textContent = 'Install';
+    }
   }
 
   function showError(e) {
@@ -108,6 +157,7 @@
   listen('status-changed', () => { resetConnect(); refresh(); });
   listen('cloud-error', e => { resetConnect(); alert(e.payload); });
   refresh();
+  refreshAgents();
 </script>
 </body>
 </html>
