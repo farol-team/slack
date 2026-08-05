@@ -10,7 +10,17 @@ features:
     display_name: farol-dev-bot
     always_online: true
 oauth_config:
+  # A manifest replaces the whole config: without these two the dashboard
+  # cannot sign anyone in and the install callback has nowhere to land.
+  redirect_urls:
+    - https://REPLACE-ME.ngrok.io/api/oauth/callback
+    - https://REPLACE-ME.ngrok.io/api/slack/callback
   scopes:
+    # "Sign in with Slack" (OIDC) — the dashboard login.
+    user:
+      - openid
+      - profile
+      - email
     bot:
       - app_mentions:read
       - channels:read
@@ -40,7 +50,7 @@ settings:
       - message.im       # a DM to the bot is a task, no mention needed
       - file_deleted     # deleting in Slack removes the copy in memory
       - message.channels
-      - message.groups   # приватные каналы тоже пишем в память (OV channel = id канала)
+      - message.groups   # private channels are archived too (OV channel = channel id)
   org_deploy_enabled: false
   socket_mode_enabled: false
   token_rotation_enabled: false
