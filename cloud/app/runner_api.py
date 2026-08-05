@@ -57,6 +57,14 @@ async def runner_watchdog() -> None:
 @api.websocket("/runner/v1")
 async def runner_ws(ws: WebSocket):
     await ws.accept()
+    # The handshake announces the client before it authenticates: a runner
+    # rejected for a bad token still tells us which version and OS dialed in,
+    # which is the whole question when a release starts failing to connect.
+    hs_version = ws.headers.get("x-farol-runner-version", "")
+    hs_os = ws.headers.get("x-farol-runner-os", "")
+    log.info("runner dialed in: version=%s os=%s ua=%s",
+             hs_version or "?", hs_os or "?",
+             ws.headers.get("user-agent", "?"))
     runner = None
     try:
         while True:
@@ -68,6 +76,10 @@ async def runner_ws(ws: WebSocket):
                 continue
 
             if isinstance(msg, p.Hello):
+                # The frame stays authoritative; the handshake fills in when a
+                # client sends the identity only in the headers.
+                msg.runner_version = msg.runner_version or hs_version
+                msg.os = msg.os or hs_os
                 runner = await chats.register(ws, msg)
                 if runner is None:
                     await ws.close(code=4001)

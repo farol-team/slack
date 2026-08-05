@@ -41,9 +41,11 @@ class TurnStatus(str, Enum):
 class Hello(BaseModel):
     type: Literal["hello"] = "hello"
     token: str
-    runner_version: str
     agents: list[str]
-    os: str
+    # Also sent as x-farol-runner-version / x-farol-runner-os on the WS
+    # handshake; empty here means "take it from the headers" (runner_api).
+    runner_version: str = ""
+    os: str = ""
 
 
 class Ping(BaseModel):

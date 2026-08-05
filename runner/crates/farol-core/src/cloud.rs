@@ -6,8 +6,32 @@ use futures_util::{SinkExt, StreamExt};
 use std::sync::Arc;
 use std::time::Duration;
 use tokio::sync::mpsc;
+use tokio_tungstenite::tungstenite::client::IntoClientRequest;
+use tokio_tungstenite::tungstenite::http::{header::USER_AGENT, HeaderValue, Request};
 use tokio_tungstenite::{connect_async, tungstenite::Message};
 use tracing::{info, warn};
+
+/// Version and OS travel on the handshake as well as in `hello`.
+///
+/// The frame is the protocol and stays authoritative; the headers are for
+/// everything that never sees a frame — a connection rejected before it
+/// authenticates still says what dialed in, and the proxy in front of the
+/// cloud writes them to its access log, where frames do not appear.
+fn handshake_request(url: &str, version: &str, os: &str) -> Option<Request<()>> {
+    let mut req = url.into_client_request().ok()?;
+    let headers = req.headers_mut();
+    if !version.is_empty() {
+        headers.insert("x-farol-runner-version", HeaderValue::from_str(version).ok()?);
+    }
+    if !os.is_empty() {
+        headers.insert("x-farol-runner-os", HeaderValue::from_str(os).ok()?);
+    }
+    let agent = format!("farol-runner/{} ({})",
+                        if version.is_empty() { "unknown" } else { version },
+                        if os.is_empty() { "unknown" } else { os });
+    headers.insert(USER_AGENT, HeaderValue::from_str(&agent).ok()?);
+    Some(req)
+}
 
 /// Handle for sending messages to the cloud.
 #[derive(Clone)]
@@ -66,6 +90,12 @@ where
     };
     let sender_loop = sender.clone();
     let on_message = Arc::new(on_message);
+    // One source of truth for who we are: whatever `hello` announces is what
+    // the handshake claims.
+    let (version, os) = match &hello {
+        CloudMessage::Hello(h) => (h.runner_version.clone(), h.os.clone()),
+        _ => (String::new(), String::new()),
+    };
 
     tokio::spawn(async move {
         let mut backoff = Duration::from_secs(1);
@@ -74,8 +104,14 @@ where
                 info!("cloud loop stopped");
                 return;
             }
-            info!("connecting to {cloud_url}");
-            match connect_async(&cloud_url).await {
+            info!("connecting to {cloud_url} as farol-runner/{version} ({os})");
+            let attempt = match handshake_request(&cloud_url, &version, &os) {
+                Some(req) => connect_async(req).await,
+                // A URL the header builder choked on is still a URL worth
+                // dialing: the frame carries the same facts.
+                None => connect_async(&cloud_url).await,
+            };
+            match attempt {
                 Ok((ws, _)) => {
                     backoff = Duration::from_secs(1);
                     let (mut write, mut read) = ws.split();

@@ -36,9 +36,15 @@ pub enum CloudMessage {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Hello {
     pub token: String,
+    /// Also sent as `x-farol-runner-version` on the WS handshake (see
+    /// `cloud::handshake_request`) — the cloud falls back to the header
+    /// when this is empty.
+    #[serde(default)]
     pub runner_version: String,
     /// Agents available locally, e.g. ["claude-code", "gemini"].
     pub agents: Vec<String>,
+    /// Also sent as `x-farol-runner-os` on the handshake.
+    #[serde(default)]
     pub os: String,
 }
 
