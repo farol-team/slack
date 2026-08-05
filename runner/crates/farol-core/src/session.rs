@@ -39,12 +39,28 @@ impl SessionManager {
 
     /// Entry point for CloudMessage::AssignTurn.
     pub async fn handle_assign(&self, task: AssignTurn) {
+        // An empty cwd means the cloud has no opinion — the thread was never
+        // bound to a project. The machine decides then, and its first allowed
+        // directory is the only answer it can give truthfully.
+        let cwd = if task.cwd.is_empty() {
+            match self.config.allowed_cwds.first() {
+                Some(dir) => dir.clone(),
+                None => {
+                    error!("no allowed project directory configured");
+                    self.finish(task.turn_id, TurnStatus::Failed, None,
+                                Some("no project folder allowed on this runner — \
+                                      add one in Farol Runner".into()));
+                    return;
+                }
+            }
+        } else {
+            PathBuf::from(&task.cwd)
+        };
         // Security gate: never run outside allowlisted directories.
-        let cwd = PathBuf::from(&task.cwd);
         if !self.config.is_cwd_allowed(&cwd) {
             error!("rejected cwd outside allowlist: {cwd:?}");
             self.finish(task.turn_id, TurnStatus::Failed, None,
-                        Some("cwd not allowed by local policy".into()));
+                        Some(format!("cwd not allowed by local policy: {}", cwd.display())));
             return;
         }
 
@@ -98,12 +114,15 @@ impl SessionManager {
             None => json!([]),
         };
 
+        // The resolved directory, not what the cloud asked for: they differ
+        // whenever the cloud had no opinion and this machine chose.
+        let cwd_str = cwd.to_string_lossy().to_string();
         let session_id = match &task.resume_session {
             Some(sid) => {
-                client.load_session(sid, &task.cwd, mcp_servers).await.ok();
+                client.load_session(sid, &cwd_str, mcp_servers).await.ok();
                 Some(sid.clone())
             }
-            None => client.new_session(&task.cwd, mcp_servers).await.ok(),
+            None => client.new_session(&cwd_str, mcp_servers).await.ok(),
         };
 
         let client = Arc::new(client);

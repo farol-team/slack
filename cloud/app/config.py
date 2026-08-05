@@ -8,7 +8,10 @@ import os
 SLACK_SIGNING_SECRET = os.environ["SLACK_SIGNING_SECRET"]
 OPENVIKING_URL = os.getenv("OPENVIKING_URL", "http://openviking:1933")
 OPENVIKING_ROOT_KEY = os.environ["OPENVIKING_ROOT_KEY"]
-DEFAULT_CWD = os.getenv("DEFAULT_CWD", "/home/user/projects")
+# Empty on purpose: the cloud does not know what directories exist on a
+# person's machine. An empty cwd tells the runner to use its own first
+# allowed project folder; set this only to pin every turn to one path.
+DEFAULT_CWD = os.getenv("DEFAULT_CWD", "")
 FAROL_SAAS_URL = os.environ["FAROL_SAAS_URL"].rstrip("/")  # SaaS control plane
 # Public base URL of the hooks surface — agents reach /memory/mcp through it.
 FAROL_CLOUD_PUBLIC_URL = os.environ["FAROL_CLOUD_PUBLIC_URL"].rstrip("/")
