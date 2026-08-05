@@ -29,21 +29,21 @@ export default function Memory() {
     { enabled: !!wsId && submitted.length > 0, retry: false },
   );
 
-  if (!wsId) return <p className="text-muted-foreground">Сначала создайте workspace на странице «Обзор».</p>;
+  if (!wsId) return <p className="text-muted-foreground">Create a workspace on the Overview page first.</p>;
 
   const results = (data?.results ?? []) as MemResult[];
 
   return (
     <div className="max-w-4xl space-y-6">
       <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-bold">Память</h1>
+        <h1 className="text-2xl font-bold">Memory</h1>
         {status?.online
-          ? <Badge>OpenViking онлайн</Badge>
-          : <Badge variant="secondary">OpenViking не подключён</Badge>}
+          ? <Badge>OpenViking online</Badge>
+          : <Badge variant="secondary">OpenViking not connected</Badge>}
       </div>
       <p className="text-muted-foreground text-sm">
-        Семантический поиск по памяти workspace: архив Slack, извлечённые знания,
-        опыт агентов. Тот же поиск выполняют агенты через MCP.
+        Semantic search over the workspace memory: the Slack archive, extracted knowledge,
+        and agents' experience. Agents run the same search via MCP.
       </p>
 
       <form
@@ -51,18 +51,18 @@ export default function Memory() {
         onSubmit={(e) => { e.preventDefault(); if (query.trim()) setSubmitted(query.trim()); }}
       >
         <Input
-          placeholder="Например: что мы решили по миграции на Postgres?"
+          placeholder="e.g. what did we decide about the Postgres migration?"
           value={query}
           onChange={(e) => setQuery(e.target.value)}
         />
         <Button type="submit" disabled={isFetching}>
-          <Search className="h-4 w-4 mr-2" /> Найти
+          <Search className="h-4 w-4 mr-2" /> Search
         </Button>
       </form>
 
       {error && (
         <Card><CardContent className="pt-6 text-sm text-muted-foreground">
-          Поиск недоступен: {error.message}. Настройте OPENVIKING_URL на сервере.
+          Search is unavailable: {error.message}.
         </CardContent></Card>
       )}
 
@@ -77,7 +77,7 @@ export default function Memory() {
             </Card>
           ))}
           {!isFetching && results.length === 0 && (
-            <p className="text-sm text-muted-foreground">Ничего не найдено. Память наполняется ingestion'ом из Slack.</p>
+            <p className="text-sm text-muted-foreground">Nothing found yet. Memory fills up as Slack messages are ingested.</p>
           )}
         </div>
       )}

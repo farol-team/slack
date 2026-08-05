@@ -9,10 +9,10 @@ import {
 import { cn } from "@/lib/utils";
 
 const menu = [
-  { to: "/dashboard", label: "Обзор", icon: LayoutDashboard, end: true },
+  { to: "/dashboard", label: "Overview", icon: LayoutDashboard, end: true },
   { to: "/dashboard/runners", label: "Runners", icon: TerminalSquare },
-  { to: "/dashboard/memory", label: "Память", icon: Database },
-  { to: "/dashboard/settings", label: "Настройки", icon: Settings },
+  { to: "/dashboard/memory", label: "Memory", icon: Database },
+  { to: "/dashboard/settings", label: "Settings", icon: Settings },
 ];
 
 export function useWorkspaceSelection() {
@@ -59,7 +59,7 @@ export default function DashboardLayout() {
           <div className="text-sm font-medium truncate">{user?.name ?? "…"}</div>
           <div className="text-xs text-muted-foreground truncate mb-3">{user?.email}</div>
           <Button variant="ghost" size="sm" className="w-full justify-start" onClick={() => { logout(); navigate("/"); }}>
-            <LogOut className="h-4 w-4 mr-2" /> Выйти
+            <LogOut className="h-4 w-4 mr-2" /> Sign out
           </Button>
         </div>
       </aside>

@@ -25,8 +25,12 @@ import {
   MessageSquare,
 } from "lucide-react";
 
+const RELEASE_BASE =
+  "https://github.com/farol-team/slack/releases/latest/download";
 const RUNNER_DOWNLOADS = {
-  linux: "https://storage.yandexcloud.net/farol-downloads/farol-runner-linux-x64",
+  macArm: `${RELEASE_BASE}/farol-runner-darwin-arm64`,
+  macIntel: `${RELEASE_BASE}/farol-runner-darwin-x64`,
+  linux: `${RELEASE_BASE}/farol-runner-linux-x64`,
 };
 
 const ONLINE_WINDOW_MS = 2 * 60 * 1000;
@@ -110,7 +114,7 @@ export default function Dashboard() {
     overview?.channels.find((c) => c.slackChannelId === id)?.name ?? id;
 
   const runSnippet =
-    "chmod +x farol-runner-linux-x64\n./farol-runner-linux-x64";
+    "chmod +x farol-runner-*\n./farol-runner-<your-platform>";
   const mentionSnippet = "@farol summarize what this team decided this week";
 
   return (
@@ -239,17 +243,30 @@ export default function Dashboard() {
                   </p>
                   <div className="flex flex-wrap gap-2">
                     <Button variant="outline" size="sm" asChild>
+                      <a href={RUNNER_DOWNLOADS.macArm} download>
+                        <Download className="h-4 w-4 mr-2" /> macOS (Apple
+                        Silicon)
+                      </a>
+                    </Button>
+                    <Button variant="outline" size="sm" asChild>
+                      <a href={RUNNER_DOWNLOADS.macIntel} download>
+                        <Download className="h-4 w-4 mr-2" /> macOS (Intel)
+                      </a>
+                    </Button>
+                    <Button variant="outline" size="sm" asChild>
                       <a href={RUNNER_DOWNLOADS.linux} download>
                         <Download className="h-4 w-4 mr-2" /> Linux x64
                       </a>
                     </Button>
                     <Button variant="outline" size="sm" disabled>
-                      <Download className="h-4 w-4 mr-2" /> macOS — soon
-                    </Button>
-                    <Button variant="outline" size="sm" disabled>
                       <Download className="h-4 w-4 mr-2" /> Windows — soon
                     </Button>
                   </div>
+                  <p className="text-xs text-muted-foreground">
+                    macOS: the binary is unsigned for now — run{" "}
+                    <code>xattr -d com.apple.quarantine ./farol-runner-*</code>{" "}
+                    once before the first start.
+                  </p>
                   <div className="flex items-start gap-2">
                     <pre className="bg-muted p-3 rounded-md text-xs flex-1 overflow-auto">
                       {runSnippet}

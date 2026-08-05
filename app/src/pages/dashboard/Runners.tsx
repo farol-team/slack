@@ -32,51 +32,51 @@ export default function Runners() {
     onSuccess: () => utils.runner.list.invalidate(),
   });
 
-  if (!wsId) return <p className="text-muted-foreground">Сначала создайте workspace на странице «Обзор».</p>;
+  if (!wsId) return <p className="text-muted-foreground">Create a workspace on the Overview page first.</p>;
 
   return (
     <div className="max-w-4xl space-y-6">
       <h1 className="text-2xl font-bold">Runners</h1>
       <p className="text-muted-foreground text-sm">
-        Runner — тонкий клиент на машине разработчика: держит исходящее соединение с облаком
-        и выполняет задачи из Slack на локальном агенте через ACP.
+        A runner is a thin client on a developer's machine: it keeps an outbound connection to the cloud
+        and executes Slack tasks on a local agent via ACP.
       </p>
 
       <Card>
-        <CardHeader><CardTitle>Новый токен</CardTitle></CardHeader>
+        <CardHeader><CardTitle>New token</CardTitle></CardHeader>
         <CardContent className="flex gap-3">
-          <Input placeholder="Метка (напр. macbook-irina)" value={label} onChange={(e) => setLabel(e.target.value)} />
+          <Input placeholder="Label (e.g. macbook-irina)" value={label} onChange={(e) => setLabel(e.target.value)} />
           <Button disabled={!label.trim() || createToken.isPending}
             onClick={() => createToken.mutate({ workspaceId: wsId, label: label.trim() })}>
-            <Plus className="h-4 w-4 mr-2" /> Создать
+            <Plus className="h-4 w-4 mr-2" /> Create
           </Button>
         </CardContent>
       </Card>
 
       {issued && (
         <Card className="border-primary">
-          <CardHeader><CardTitle className="text-base">Токен создан — показывается один раз</CardTitle></CardHeader>
+          <CardHeader><CardTitle className="text-base">Token created — shown only once</CardTitle></CardHeader>
           <CardContent className="space-y-3">
             <pre className="bg-muted p-3 rounded-md text-xs break-all">{issued}</pre>
             <Button variant="outline" size="sm"
               onClick={() => { navigator.clipboard.writeText(issued); setCopied(true); setTimeout(() => setCopied(false), 1500); }}>
               {copied ? <CheckCircle2 className="h-4 w-4 mr-2" /> : <Copy className="h-4 w-4 mr-2" />}
-              {copied ? "Скопировано" : "Скопировать"}
+              {copied ? "Copied" : "Copy"}
             </Button>
           </CardContent>
         </Card>
       )}
 
       <Card>
-        <CardHeader><CardTitle>Активные</CardTitle></CardHeader>
+        <CardHeader><CardTitle>Active</CardTitle></CardHeader>
         <CardContent>
           <Table>
             <TableHeader>
               <TableRow>
-                <TableHead>Метка</TableHead>
-                <TableHead>Агенты</TableHead>
-                <TableHead>Версия</TableHead>
-                <TableHead>Последний контакт</TableHead>
+                <TableHead>Label</TableHead>
+                <TableHead>Agents</TableHead>
+                <TableHead>Version</TableHead>
+                <TableHead>Last seen</TableHead>
                 <TableHead />
               </TableRow>
             </TableHeader>
@@ -90,7 +90,7 @@ export default function Runners() {
                       : <span className="text-muted-foreground">—</span>}
                   </TableCell>
                   <TableCell>{r.version ?? "—"}</TableCell>
-                  <TableCell>{r.lastSeenAt ? new Date(r.lastSeenAt).toLocaleString() : "никогда"}</TableCell>
+                  <TableCell>{r.lastSeenAt ? new Date(r.lastSeenAt).toLocaleString() : "never"}</TableCell>
                   <TableCell>
                     <Button variant="ghost" size="icon" onClick={() => revoke.mutate({ runnerId: r.id })}>
                       <Trash2 className="h-4 w-4 text-destructive" />
@@ -99,7 +99,7 @@ export default function Runners() {
                 </TableRow>
               ))}
               {(runnerList ?? []).length === 0 && (
-                <TableRow><TableCell colSpan={5} className="text-muted-foreground">Пока нет runner'ов</TableCell></TableRow>
+                <TableRow><TableCell colSpan={5} className="text-muted-foreground">No runners yet</TableCell></TableRow>
               )}
             </TableBody>
           </Table>

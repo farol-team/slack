@@ -8,9 +8,9 @@ import { cn } from "@/lib/utils";
 import { Check } from "lucide-react";
 
 const plans = [
-  { id: "free" as const, name: "Free", price: "$0", items: ["1 канал", "30 дней истории", "MCP-доступ", "1 runner"] },
-  { id: "team" as const, name: "Team", price: "$12/польз.", items: ["Безлимит каналов", "Полная память команды", "Все runner'ы", "Приоритетная поддержка"] },
-  { id: "enterprise" as const, name: "Enterprise", price: "Custom", items: ["Выделенный инстанс", "BYOK", "SSO/аудит", "On-prem"] },
+  { id: "free" as const, name: "Free", price: "$0", items: ["1 channel", "30 days of history", "MCP access", "1 runner"] },
+  { id: "team" as const, name: "Team", price: "$12/user", items: ["Unlimited channels", "Full team memory", "All runners", "Priority support"] },
+  { id: "enterprise" as const, name: "Enterprise", price: "Custom", items: ["Dedicated instance", "BYOK", "SSO/audit", "On-prem"] },
 ];
 
 export default function Settings() {
@@ -21,27 +21,27 @@ export default function Settings() {
     onSuccess: () => utils.workspace.list.invalidate(),
   });
 
-  if (!ws) return <p className="text-muted-foreground">Сначала создайте workspace на странице «Обзор».</p>;
+  if (!ws) return <p className="text-muted-foreground">Create a workspace on the Overview page first.</p>;
 
   return (
     <div className="max-w-4xl space-y-6">
-      <h1 className="text-2xl font-bold">Настройки</h1>
+      <h1 className="text-2xl font-bold">Settings</h1>
 
       <Card>
         <CardHeader><CardTitle>Workspace</CardTitle></CardHeader>
         <CardContent className="space-y-2 text-sm">
-          <div className="flex justify-between"><span className="text-muted-foreground">Название</span><span>{ws.name}</span></div>
+          <div className="flex justify-between"><span className="text-muted-foreground">Name</span><span>{ws.name}</span></div>
           <div className="flex justify-between"><span className="text-muted-foreground">OpenViking account</span><code>{ws.ovAccountId}</code></div>
           <div className="flex justify-between">
             <span className="text-muted-foreground">Slack team</span>
-            <span>{ws.slackTeamId ?? <Badge variant="secondary">не подключён</Badge>}</span>
+            <span>{ws.slackTeamId ?? <Badge variant="secondary">not connected</Badge>}</span>
           </div>
-          <div className="flex justify-between"><span className="text-muted-foreground">Ваша роль</span><span>{ws.role}</span></div>
+          <div className="flex justify-between"><span className="text-muted-foreground">Your role</span><span>{ws.role}</span></div>
         </CardContent>
       </Card>
 
       <div>
-        <h2 className="text-lg font-semibold mb-4">Тариф</h2>
+        <h2 className="text-lg font-semibold mb-4">Plan</h2>
         <div className="grid md:grid-cols-3 gap-4">
           {plans.map((p) => {
             const active = ws.plan === p.id;
@@ -50,7 +50,7 @@ export default function Settings() {
                 <CardHeader>
                   <CardTitle className="flex items-center justify-between">
                     {p.name}
-                    {active && <Badge>текущий</Badge>}
+                    {active && <Badge>current</Badge>}
                   </CardTitle>
                   <div className="text-xl font-bold">{p.price}</div>
                 </CardHeader>
@@ -68,7 +68,7 @@ export default function Settings() {
                       disabled={setPlan.isPending || ws.role !== "owner"}
                       onClick={() => setPlan.mutate({ workspaceId: ws.id, plan: p.id })}
                     >
-                      Переключить
+                      Switch
                     </Button>
                   )}
                 </CardContent>
@@ -77,7 +77,7 @@ export default function Settings() {
           })}
         </div>
         {ws.role !== "owner" && (
-          <p className="text-xs text-muted-foreground mt-3">Смена тарифа доступна владельцу workspace.</p>
+          <p className="text-xs text-muted-foreground mt-3">Only the workspace owner can change the plan.</p>
         )}
       </div>
     </div>
