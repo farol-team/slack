@@ -23,6 +23,10 @@ struct AppState {
 
 #[derive(Clone, Serialize)]
 struct RunnerStatus {
+    /// Shown in the window footer: which build is on this machine, so a bug
+    /// report says what it is about. The commit is what actually distinguishes
+    /// two builds — the release tag gets moved.
+    version: String,
     connected: bool,
     workspace_id: Option<String>,
     logged_in: bool,
@@ -33,6 +37,10 @@ struct RunnerStatus {
 impl Default for RunnerStatus {
     fn default() -> Self {
         Self {
+            version: match option_env!("FAROL_BUILD_SHA") {
+                Some(sha) => format!("{} ({})", env!("CARGO_PKG_VERSION"), &sha[..7.min(sha.len())]),
+                None => env!("CARGO_PKG_VERSION").to_string(),
+            },
             connected: false,
             workspace_id: None,
             logged_in: RunnerConfig::token().ok().flatten().is_some(),

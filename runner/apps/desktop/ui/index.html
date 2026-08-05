@@ -55,6 +55,8 @@
     <button class="ghost" id="logout-btn" style="display:none" onclick="doLogout()">Disconnect</button>
   </div>
 
+  <div id="version" class="sub" style="text-align:center;margin:16px 0 0"></div>
+
 <script>
   const { invoke } = window.__TAURI__.core;
   const { listen } = window.__TAURI__.event;
@@ -67,6 +69,7 @@
     document.getElementById('ws').textContent = s.workspace_id || '—';
     document.getElementById('agents').textContent = s.agents.join(', ') || '—';
     document.getElementById('tasks').textContent = s.active_tasks;
+    document.getElementById('version').textContent = 'v' + s.version;
     document.getElementById('login-card').style.display = s.logged_in ? 'none' : 'block';
     document.getElementById('logout-btn').style.display = s.logged_in ? 'block' : 'none';
   }
