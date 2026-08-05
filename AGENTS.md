@@ -15,7 +15,8 @@ agent on a developer's machine, while team memory is stored in OpenViking.
 ```
 
 - **`app/`** — SaaS control plane: web UI on React 19 + Vite, backend on
-  Hono + tRPC, PostgreSQL via Drizzle ORM, authentication via Kimi OAuth.
+  Hono + tRPC, PostgreSQL via Drizzle ORM, authentication via Sign in with
+  Slack (OIDC), runner onboarding via runner-connect (browser handoff).
   Stores workspaces, runners, channels, tasks, and Slack installations (bot tokens).
 - **`cloud/`** — cloud service (data plane) on Python/FastAPI: receives Slack
   Events (Slack Bolt), holds the `/runner/v1` WebSocket for runners, routes tasks
@@ -39,7 +40,7 @@ OpenViking MCP endpoint via `AssignTurn.memory`.
   router: `auth`, `workspace`, `runner`, `memory`, `billing`, `slack`),
   `middleware.ts` (`publicQuery`/`authedQuery`/`adminQuery` procedures),
   `saas-router.ts` (SaaS domain logic), `slack-oauth.ts` (OAuth v2 "Add to Slack"),
-  `kimi/` (Kimi OAuth), `queries/` (DB access), `lib/` (env, cookies, vite integration).
+  `identity/` (Slack OIDC sign-in + session), `queries/` (DB access), `lib/` (env, cookies, vite integration).
 - `contracts/` — types/constants shared between client and server (re-exports types from `db/schema`).
 - `db/` — Drizzle ORM: `schema.ts`, `relations.ts`, `seed.ts`, `migrations/` (PostgreSQL).
 - `src/` — frontend: `main.tsx`, `App.tsx` (react-router: `/`, `/login`,

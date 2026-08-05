@@ -1,5 +1,6 @@
 import { randomBytes } from "node:crypto";
 import { getDb } from "./queries/connection";
+import { createWorkspaceForUser } from "./queries/workspaces";
 import {
   channels,
   slackInstallations,
@@ -13,11 +14,10 @@ import { TRPCError } from "@trpc/server";
 import { z } from "zod";
 import { authedQuery, createRouter, publicQuery } from "./middleware";
 import { requireInternal } from "./saas-router";
+import { env } from "./lib/env";
 
-const SLACK_CLIENT_ID = process.env.SLACK_CLIENT_ID ?? "";
-const SLACK_CLIENT_SECRET = process.env.SLACK_CLIENT_SECRET ?? "";
-const PUBLIC_URL = (process.env.PUBLIC_URL ?? "http://localhost:3000").replace(/\/$/, "");
-const INTERNAL_SECRET = process.env.INTERNAL_API_SECRET ?? "";
+const PUBLIC_URL = env.publicUrl;
+const INTERNAL_SECRET = env.internalApiSecret;
 
 export const SLACK_SCOPES = [
   "app_mentions:read",
@@ -47,28 +47,32 @@ async function requireMembership(workspaceId: number, userId: number) {
 }
 
 export const slackRouter = createRouter({
-  /** Build the "Add to Slack" authorize URL with a DB-backed state. */
+  /** Build the "Add to Slack" authorize URL with a DB-backed state.
+   *  Without a workspaceId the workspace is created on callback. */
   connectUrl: authedQuery
-    .input(z.object({ workspaceId: z.number() }))
+    .input(z.object({ workspaceId: z.number().optional() }))
     .mutation(async ({ ctx, input }) => {
-      if (!SLACK_CLIENT_ID) {
+      if (!env.slackClientId) {
         throw new TRPCError({
           code: "PRECONDITION_FAILED",
-          message: "SLACK_CLIENT_ID не настроен на сервере",
+          message: "SLACK_CLIENT_ID is not configured on the server",
         });
       }
-      await requireMembership(input.workspaceId, ctx.user.id);
+      if (input.workspaceId !== undefined) {
+        await requireMembership(input.workspaceId, ctx.user.id);
+      }
       const db = getDb();
       const state = randomBytes(24).toString("hex");
       await db.insert(slackOauthStates).values({
         state,
-        workspaceId: input.workspaceId,
+        kind: "install",
+        workspaceId: input.workspaceId ?? null,
         userId: ctx.user.id,
         expiresAt: new Date(Date.now() + 10 * 60 * 1000),
       });
       const url =
         "https://slack.com/oauth/v2/authorize" +
-        `?client_id=${encodeURIComponent(SLACK_CLIENT_ID)}` +
+        `?client_id=${encodeURIComponent(env.slackClientId)}` +
         `&scope=${encodeURIComponent(SLACK_SCOPES)}` +
         `&redirect_uri=${encodeURIComponent(redirectUri())}` +
         `&state=${state}`;
@@ -166,7 +170,7 @@ export const slackRouter = createRouter({
       const db = getDb();
       const [ws] = await db.select().from(workspaces).where(eq(workspaces.id, input.workspaceId)).limit(1);
       if (!ws?.slackTeamId) return { state: "not_connected" as const };
-      const cloudUrl = (process.env.FAROL_CLOUD_URL ?? "").replace(/\/$/, "");
+      const cloudUrl = env.farolCloudUrl;
       if (!cloudUrl || !INTERNAL_SECRET) return { state: "unavailable" as const };
       try {
         const res = await fetch(`${cloudUrl}/internal/import/${ws.slackTeamId}/status`, {
@@ -207,11 +211,12 @@ export async function handleSlackCallback(
     .where(
       and(
         eq(slackOauthStates.state, state),
+        eq(slackOauthStates.kind, "install"),
         gt(slackOauthStates.expiresAt, new Date()),
       ),
     )
     .limit(1);
-  if (!st) {
+  if (!st || !st.userId) {
     return { redirectTo: "/dashboard?slack=error&reason=state" };
   }
   await db.delete(slackOauthStates).where(eq(slackOauthStates.id, st.id));
@@ -220,8 +225,8 @@ export async function handleSlackCallback(
     method: "POST",
     headers: { "Content-Type": "application/x-www-form-urlencoded" },
     body: new URLSearchParams({
-      client_id: SLACK_CLIENT_ID,
-      client_secret: SLACK_CLIENT_SECRET,
+      client_id: env.slackClientId,
+      client_secret: env.slackClientSecret,
       code,
       redirect_uri: redirectUri(),
     }),
@@ -229,6 +234,18 @@ export async function handleSlackCallback(
   const data = (await res.json()) as SlackOauthResponse;
   if (!data.ok || !data.access_token || !data.team) {
     return { redirectTo: `/dashboard?slack=error&reason=${data.error ?? "unknown"}` };
+  }
+
+  // No workspace pre-selected: create one for the installing user,
+  // named after the Slack team.
+  let workspaceId = st.workspaceId;
+  if (!workspaceId) {
+    const ws = await createWorkspaceForUser(
+      db,
+      st.userId,
+      data.team.name || "My workspace",
+    );
+    workspaceId = ws.id;
   }
 
   // Upsert installation + link workspace.
@@ -249,7 +266,7 @@ export async function handleSlackCallback(
       .where(eq(slackInstallations.id, existing.id));
   } else {
     await db.insert(slackInstallations).values({
-      workspaceId: st.workspaceId,
+      workspaceId,
       teamId: data.team.id,
       teamName: data.team.name,
       botUserId: data.bot_user_id ?? null,
@@ -261,7 +278,7 @@ export async function handleSlackCallback(
   await db
     .update(workspaces)
     .set({ slackTeamId: data.team.id })
-    .where(eq(workspaces.id, st.workspaceId));
+    .where(eq(workspaces.id, workspaceId));
 
   // Best-effort channel sync (bot sees only channels it's a member of).
   try {
@@ -280,14 +297,14 @@ export async function handleSlackCallback(
           .from(channels)
           .where(
             and(
-              eq(channels.workspaceId, st.workspaceId),
+              eq(channels.workspaceId, workspaceId),
               eq(channels.slackChannelId, ch.id),
             ),
           )
           .limit(1);
         if (!dup) {
           await db.insert(channels).values({
-            workspaceId: st.workspaceId,
+            workspaceId,
             slackChannelId: ch.id,
             name: ch.name,
           });
@@ -308,7 +325,7 @@ export async function handleSlackCallback(
 
 /** Fire-and-forget: ask cloud to create the OV account for this team. */
 export async function triggerProvision(teamId: string): Promise<void> {
-  const cloudUrl = (process.env.FAROL_CLOUD_URL ?? "").replace(/\/$/, "");
+  const cloudUrl = env.farolCloudUrl;
   if (!cloudUrl || !INTERNAL_SECRET) return;
   try {
     await fetch(`${cloudUrl}/internal/provision`, {
@@ -327,7 +344,7 @@ export async function triggerProvision(teamId: string): Promise<void> {
 
 /** Fire-and-forget: ask cloud to start the historical import. */
 export async function triggerHistoryImport(teamId: string): Promise<void> {
-  const cloudUrl = (process.env.FAROL_CLOUD_URL ?? "").replace(/\/$/, "");
+  const cloudUrl = env.farolCloudUrl;
   if (!cloudUrl || !INTERNAL_SECRET) return;
   try {
     await fetch(`${cloudUrl}/internal/import/start`, {

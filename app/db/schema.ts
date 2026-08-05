@@ -8,6 +8,7 @@ import {
   timestamp,
   boolean,
   jsonb,
+  uniqueIndex,
 } from "drizzle-orm/pg-core";
 
 export const userRole = pgEnum("user_role", ["user", "admin"]);
@@ -22,20 +23,27 @@ export const turnStatus = pgEnum("turn_status", [
   "orphaned",
 ]);
 
-export const users = pgTable("users", {
-  id: serial("id").primaryKey(),
-  unionId: varchar("unionId", { length: 255 }).notNull().unique(),
-  name: varchar("name", { length: 255 }),
-  email: varchar("email", { length: 320 }),
-  avatar: text("avatar"),
-  role: userRole("role").default("user").notNull(),
-  createdAt: timestamp("createdAt").defaultNow().notNull(),
-  updatedAt: timestamp("updatedAt")
-    .defaultNow()
-    .notNull()
-    .$onUpdate(() => new Date()),
-  lastSignInAt: timestamp("lastSignInAt").defaultNow().notNull(),
-});
+export const users = pgTable(
+  "users",
+  {
+    id: serial("id").primaryKey(),
+    /** Identity provider that issued `subject` (e.g. "slack"). */
+    provider: varchar("provider", { length: 32 }).notNull().default("slack"),
+    /** Provider-scoped user id (OIDC `sub`). */
+    subject: varchar("subject", { length: 255 }),
+    name: varchar("name", { length: 255 }),
+    email: varchar("email", { length: 320 }),
+    avatar: text("avatar"),
+    role: userRole("role").default("user").notNull(),
+    createdAt: timestamp("createdAt").defaultNow().notNull(),
+    updatedAt: timestamp("updatedAt")
+      .defaultNow()
+      .notNull()
+      .$onUpdate(() => new Date()),
+    lastSignInAt: timestamp("lastSignInAt").defaultNow().notNull(),
+  },
+  (t) => [uniqueIndex("users_provider_subject_idx").on(t.provider, t.subject)],
+);
 
 export type User = typeof users.$inferSelect;
 export type InsertUser = typeof users.$inferInsert;
@@ -168,17 +176,39 @@ export const slackInstallations = pgTable("slack_installations", {
 });
 export type SlackInstallation = typeof slackInstallations.$inferSelect;
 
-/** One-time OAuth state tokens (CSRF protection for the Slack flow). */
+/** One-time OAuth state tokens (CSRF protection for the Slack flows). */
 export const slackOauthStates = pgTable("slack_oauth_states", {
   id: serial("id").primaryKey(),
   state: varchar("state", { length: 64 }).notNull().unique(),
-  workspaceId: integer("workspaceId")
-    .notNull()
-    .references(() => workspaces.id),
-  userId: integer("userId")
-    .notNull()
-    .references(() => users.id),
+  /** Flow this state belongs to: "install" (Add to Slack) or "login" (OIDC). */
+  kind: varchar("kind", { length: 16 }).notNull().default("install"),
+  /** NULL for the login flow: the workspace may not exist yet. */
+  workspaceId: integer("workspaceId").references(() => workspaces.id),
+  /** NULL for the login flow: the user is not authenticated yet. */
+  userId: integer("userId").references(() => users.id),
+  /** Login flow: where to redirect after a successful sign-in. */
+  next: varchar("next", { length: 512 }),
+  /** Login flow: OIDC nonce bound to the issued id_token. */
+  nonce: varchar("nonce", { length: 64 }),
   expiresAt: timestamp("expiresAt").notNull(),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
 });
 export type SlackOauthState = typeof slackOauthStates.$inferSelect;
+
+/** Browser-handoff codes for `farol runner connect`: the desktop runner
+ *  polls until a logged-in user approves the code in the dashboard. */
+export const runnerConnectCodes = pgTable("runner_connect_codes", {
+  id: serial("id").primaryKey(),
+  code: varchar("code", { length: 64 }).notNull().unique(),
+  /** Machine name shown on the approval card. */
+  label: varchar("label", { length: 255 }),
+  userId: integer("userId").references(() => users.id),
+  workspaceId: integer("workspaceId"),
+  memberId: integer("memberId"),
+  /** Plaintext `frl_...` token, stored only until the runner polls it once. */
+  token: varchar("token", { length: 128 }),
+  approvedAt: timestamp("approvedAt"),
+  expiresAt: timestamp("expiresAt").notNull(),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+});
+export type RunnerConnectCode = typeof runnerConnectCodes.$inferSelect;

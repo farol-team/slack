@@ -1,6 +1,7 @@
 import { Routes, Route } from 'react-router'
 import Home from './pages/Home'
 import Login from "./pages/Login"
+import RunnerConnect from "./pages/RunnerConnect"
 import NotFound from "./pages/NotFound"
 import DashboardLayout from "./pages/dashboard/DashboardLayout"
 import Dashboard from "./pages/dashboard/Dashboard"
@@ -13,6 +14,7 @@ export default function App() {
     <Routes>
       <Route path="/" element={<Home />} />
       <Route path="/login" element={<Login />} />
+      <Route path="/runner/connect" element={<RunnerConnect />} />
       <Route path="/dashboard" element={<DashboardLayout />}>
         <Route index element={<Dashboard />} />
         <Route path="runners" element={<Runners />} />

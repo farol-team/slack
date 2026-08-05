@@ -25,9 +25,9 @@ yc serverless container revision deploy \
   --environment "<same env as previous revision>"
 ```
 
-Env (all required in production, see `api/lib/env.ts`): `APP_ID`, `APP_SECRET`,
-`DATABASE_URL`, `KIMI_AUTH_URL`, `KIMI_OPEN_URL`, `PUBLIC_URL`,
-`INTERNAL_API_SECRET`. Read the current values with
+Env (all required in production, see `api/lib/env.ts`): `APP_SECRET`,
+`DATABASE_URL`, `SLACK_CLIENT_ID`, `SLACK_CLIENT_SECRET`, `PUBLIC_URL`,
+`INTERNAL_API_SECRET`, `OWNER_EMAILS` (optional). Read the current values with
 `yc serverless container revision get <id>` — secrets are not in the repo.
 
 ## Migrations
@@ -62,10 +62,10 @@ metadata.
 
 ## Known gaps
 
-- **Kimi OAuth is not configured**: `APP_ID=pending-kimi-app-id` is a placeholder,
-  so login does not work yet. Register the OAuth app for the gateway URL, then
-  redeploy with real `APP_ID` (+ rebuild with `VITE_APP_ID`/`VITE_KIMI_AUTH_URL`
-  baked in — they are compile-time).
+- **Slack app redirect URLs**: the Slack app must have both
+  `<PUBLIC_URL>/api/oauth/callback` (OIDC login) and
+  `<PUBLIC_URL>/api/slack/callback` (bot install) registered under
+  "Redirect URLs", plus the `openid profile email` scopes for sign-in.
 - Cloud placeholders: `SLACK_SIGNING_SECRET` (set after creating the Slack app
   from `cloud/slack-app-manifest.yaml`) and the OpenViking embedding/VLM API
   keys in `ov.conf` (writes work; semantic search fails until real keys).

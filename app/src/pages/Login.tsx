@@ -1,21 +1,6 @@
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-
-function getOAuthUrl() {
-  const kimiAuthUrl = import.meta.env.VITE_KIMI_AUTH_URL;
-  const appID = import.meta.env.VITE_APP_ID;
-  const redirectUri = `${window.location.origin}/api/oauth/callback`;
-  const state = btoa(redirectUri);
-
-  const url = new URL(`${kimiAuthUrl}/api/oauth/authorize`);
-  url.searchParams.set("client_id", appID);
-  url.searchParams.set("redirect_uri", redirectUri);
-  url.searchParams.set("response_type", "code");
-  url.searchParams.set("scope", "profile");
-  url.searchParams.set("state", state);
-
-  return url.toString();
-}
+import { Slack } from "lucide-react";
 
 export default function Login() {
   return (
@@ -26,13 +11,14 @@ export default function Login() {
         </CardHeader>
         <CardContent>
           <Button
-            className="w-full"
+            className="w-full bg-[#4A154B] text-white hover:bg-[#3b0f3c]"
             size="lg"
             onClick={() => {
-              window.location.href = getOAuthUrl();
+              window.location.href = "/api/auth/slack";
             }}
           >
-            Sign in with Kimi
+            <Slack className="h-4 w-4 mr-2" />
+            Sign in with Slack
           </Button>
         </CardContent>
       </Card>

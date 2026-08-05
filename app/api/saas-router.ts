@@ -1,8 +1,10 @@
 import { createHash, randomBytes } from "node:crypto";
 import { getDb } from "./queries/connection";
+import { createWorkspaceForUser } from "./queries/workspaces";
 import {
   channels,
   chats,
+  runnerConnectCodes,
   runners,
   turns,
   workspaceMembers,
@@ -61,19 +63,8 @@ export const workspaceRouter = createRouter({
   create: authedQuery
     .input(z.object({ name: z.string().min(2).max(100) }))
     .mutation(async ({ ctx, input }) => {
-      const db = getDb();
-      const ovAccountId = `ws_${randomBytes(6).toString("hex")}`;
-      const [ws] = await db
-        .insert(workspaces)
-        .values({ ownerUserId: ctx.user.id, name: input.name, ovAccountId })
-        .returning({ id: workspaces.id });
-      await db.insert(workspaceMembers).values({
-        workspaceId: ws.id,
-        userId: ctx.user.id,
-        role: "owner",
-        ovUserKey: `ovu_${randomBytes(16).toString("hex")}`,
-      });
-      return { id: ws.id, ovAccountId };
+      const ws = await createWorkspaceForUser(getDb(), ctx.user.id, input.name);
+      return { id: ws.id, ovAccountId: ws.ovAccountId };
     }),
 
   overview: authedQuery
@@ -130,6 +121,52 @@ export const runnerRouter = createRouter({
         })
         .returning({ id: runners.id });
       return { id: r.id, token };
+    }),
+
+  /** Approve a runner-connect code from the browser handoff: issues a
+   *  runner token for the caller's workspace and stashes the PLAINTEXT
+   *  token on the connect code until the runner polls it once. */
+  connectApprove: authedQuery
+    .input(z.object({ code: z.string().min(1).max(64) }))
+    .mutation(async ({ ctx, input }) => {
+      const db = getDb();
+      const [row] = await db
+        .select()
+        .from(runnerConnectCodes)
+        .where(eq(runnerConnectCodes.code, input.code))
+        .limit(1);
+      if (!row || row.expiresAt < new Date() || row.approvedAt) {
+        throw new TRPCError({
+          code: "BAD_REQUEST",
+          message: "Invalid or expired code",
+        });
+      }
+      const [member] = await db
+        .select()
+        .from(workspaceMembers)
+        .where(eq(workspaceMembers.userId, ctx.user.id))
+        .limit(1);
+      if (!member) {
+        throw new TRPCError({ code: "BAD_REQUEST", message: "no workspace" });
+      }
+      const token = `frl_${randomBytes(24).toString("hex")}`;
+      await db.insert(runners).values({
+        workspaceId: member.workspaceId,
+        ownerMemberId: member.id,
+        label: row.label ?? "desktop",
+        tokenHash: sha256(token),
+      });
+      await db
+        .update(runnerConnectCodes)
+        .set({
+          token,
+          userId: ctx.user.id,
+          memberId: member.id,
+          workspaceId: member.workspaceId,
+          approvedAt: new Date(),
+        })
+        .where(eq(runnerConnectCodes.id, row.id));
+      return { ok: true };
     }),
 
   list: authedQuery
