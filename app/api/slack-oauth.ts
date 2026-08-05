@@ -28,6 +28,11 @@ export const SLACK_SCOPES = [
   "groups:read",
   // Marks the message that asked: 👀 while the runner works, ✅ when it lands.
   "reactions:write",
+  // BYOA needs to know who mentioned the bot: the member link is matched by
+  // email on first contact (`users_info`), and the history importer names
+  // authors. Missing here, a fresh install cannot route a single mention.
+  "users:read",
+  "users:read.email",
 ].join(",");
 
 const redirectUri = () => `${PUBLIC_URL}/api/slack/callback`;
