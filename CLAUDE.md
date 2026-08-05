@@ -77,13 +77,13 @@ Vitest is configured in `app/` (node environment, `api/**/*.test.ts|spec.ts`) bu
 
 ## Development workflow (agent-flow)
 
-Tasks live in GitHub Issues of this repo, driven by the [farol-team/agent-flow](https://github.com/farol-team/agent-flow) kit: pipeline states are `flow:*` labels (backlog → plan-proposed → ready → in-progress → review/done), `/flow-check` triages backlog issues into PLANs, a human approves by swapping the label to `flow:ready`, `/flow-run` executes in an isolated worktree under `.gilb/worktrees/`. Kit files under `.claude/{commands,prompts,hooks,bin,providers}` are synced from the canonical repo via `bin/workflow-kit-sync` — never edit them here (CI `kit.yml` enforces this); project-owned config is `.claude/tracker.json`, `.claude/constitution.md`, `.claude/project-context.md`.
+Tasks live in GitHub Issues of this repo, driven by the [farol-team/agent-flow](https://github.com/farol-team/agent-flow) kit: pipeline states are `flow:*` labels (backlog → plan-proposed → ready → in-progress → review/done), `/flow-check` triages backlog issues into PLANs, a human approves by swapping the label to `flow:ready`, `/flow-run` executes in an isolated worktree under `.flow/worktrees/`. Kit files under `.claude/{commands,prompts,hooks,bin,providers}` are synced from the canonical repo via `bin/workflow-kit-sync` — never edit them here (CI `kit.yml` enforces this); project-owned config is `.claude/tracker.json`, `.claude/constitution.md`, `.claude/project-context.md`.
 
 ## Security notes
 
 - Secrets only via env; `.env.example` files are the templates, real `.env` files are gitignored.
 - Runner tokens (random `frl_*`, issued by `runner.createToken`): DB stores only the SHA-256 hash (`runners.tokenHash`); client keeps the token in the OS keychain, not on disk. Validation goes through the SaaS (`runner.validate`) — there is no offline/legacy token format.
-- Runner enforces `allowed_cwds` — a hard allowlist of task directories; destructive agent actions require Approve/Deny buttons in Slack.
+- Runner enforces a directory allowlist: everything under `root_dir` (`~/Farol` by default, where `<workspace>/<channel>` dirs are derived), any channel `bindings`, and extra `allowed_cwds`. Nothing else is spawned in. Destructive agent actions require Approve/Deny buttons in Slack.
 - Slack OAuth state uses one-time tokens in `slack_oauth_states` (CSRF protection).
 
 ## Known MVP limitations
