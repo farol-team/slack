@@ -48,11 +48,19 @@ pub struct AssignTurn {
     /// Slack thread this turn is bound to (cloud owns the mapping).
     pub slack_channel: String,
     pub slack_thread_ts: String,
+    /// Human names behind those ids: the runner derives
+    /// ~/Farol/<workspace>/<channel> from them. Empty when Slack withheld them.
+    #[serde(default)]
+    pub workspace_name: String,
+    #[serde(default)]
+    pub channel_name: String,
     /// Prompt text from the Slack user.
     pub prompt: String,
     /// Which agent to run (cloud may route by user's choice).
     pub agent: String,
-    /// Project directory the agent should work in (must be allowlisted locally).
+    /// Explicit project directory. Empty means the runner decides — it is the
+    /// only side that knows what exists on this machine. Allowlisted either way.
+    #[serde(default)]
     pub cwd: String,
     /// Optional ACP session id to resume.
     #[serde(default)]

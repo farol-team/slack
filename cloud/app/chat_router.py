@@ -46,6 +46,10 @@ class Chat:
     thread_ts: str
     workspace_id: str        # ovAccountId
     user_key: str            # owner = author of the first mention
+    # Human names, passed to the runner so it can derive a working directory
+    # a person recognises: ~/Farol/<workspace>/<channel>.
+    workspace_name: str = ""
+    channel_name: str = ""
     cwd: str = ""
     agent: str = ""
     session_id: Optional[str] = None
@@ -185,11 +189,13 @@ class ChatRouter:
         return self.chats.get((channel, thread_ts))
 
     def open_chat(self, *, slack_team: str, channel: str, thread_ts: str,
-                  workspace_id: str, user_key: str, cwd: str,
+                  workspace_id: str, user_key: str, cwd: str = "",
+                  workspace_name: str = "", channel_name: str = "",
                   agent: str = "") -> Chat:
         chat = Chat(chat_id=uuid4(), slack_team=slack_team,
                     slack_channel=channel, thread_ts=thread_ts,
                     workspace_id=workspace_id, user_key=user_key,
+                    workspace_name=workspace_name, channel_name=channel_name,
                     cwd=cwd, agent=agent)
         self.chats[(channel, thread_ts)] = chat
         self._mirror("chatSync.upsert", {
@@ -209,6 +215,7 @@ class ChatRouter:
         msg = p.AssignTurn(
             turn_id=turn.turn_id, slack_channel=chat.slack_channel,
             slack_thread_ts=chat.thread_ts, prompt=prompt,
+            workspace_name=chat.workspace_name, channel_name=chat.channel_name,
             agent=chat.agent or (runner.agents[0] if runner.agents else ""),
             cwd=chat.cwd, resume_session=chat.session_id, memory=memory,
         )

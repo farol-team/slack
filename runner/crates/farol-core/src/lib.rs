@@ -7,6 +7,7 @@ pub mod cloud;
 pub mod config;
 pub mod connect;
 pub mod session;
+pub mod workspace;
 pub mod protocol;
 
 pub use config::RunnerConfig;

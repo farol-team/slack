@@ -52,6 +52,7 @@ def make_installation_resolver(saas_url: str, internal_secret: str,
         inst = {
             "bot_token": data["botToken"],
             "bot_user_id": data.get("botUserId"),
+            "team_name": data.get("teamName") or "",
             "ov_account_id": data.get("ovAccountId") or team_id,
         }
         cache[team_id] = (time.monotonic(), inst)
@@ -102,6 +103,30 @@ def make_member_resolver(saas_url: str, internal_secret: str, resolve_installati
         if user_key:
             cache[cache_key] = user_key
         return user_key
+
+    return resolve
+
+
+def make_channel_name_resolver(resolve_installation):
+    """Slack channel id -> its name, asked once per channel and kept.
+    The runner turns it into a directory a person recognises."""
+    cache: dict[tuple[str, str], str] = {}
+
+    async def resolve(team_id: str, channel_id: str) -> str:
+        key = (team_id, channel_id)
+        if key in cache:
+            return cache[key]
+        try:
+            inst = await resolve_installation(team_id)
+            info = await AsyncWebClient(token=inst["bot_token"]).conversations_info(
+                channel=channel_id)
+            name = (info["channel"] or {}).get("name") or ""
+        except Exception:
+            log.exception("conversations_info failed for %s", channel_id)
+            return ""
+        if name:
+            cache[key] = name
+        return name
 
     return resolve
 
@@ -295,6 +320,7 @@ def register_handlers(app: AsyncApp, renderer: SlackRenderer,
                       ingestion: IngestionBuffer, default_cwd: str,
                       build_memory,
                       resolve_installation, resolve_member) -> None:
+    resolve_channel_name = make_channel_name_resolver(resolve_installation)
 
     @app.event("app_mention")
     async def on_mention(event, say, context):
@@ -351,9 +377,15 @@ def register_handlers(app: AsyncApp, renderer: SlackRenderer,
             return
 
         if chat is None:
-            chat = router.open_chat(slack_team=team_id, channel=channel,
-                                    thread_ts=thread_ts, workspace_id=workspace,
-                                    user_key=user_key, cwd=default_cwd)
+            # Names, not ids: the runner builds ~/Farol/<workspace>/<channel>
+            # out of them. cwd stays empty unless an operator pinned one —
+            # only the machine knows what directories it has.
+            inst = await resolve_installation(team_id)
+            chat = router.open_chat(
+                slack_team=team_id, channel=channel, thread_ts=thread_ts,
+                workspace_id=workspace, user_key=user_key, cwd=default_cwd,
+                workspace_name=inst.get("team_name") or "",
+                channel_name=await resolve_channel_name(team_id, channel))
 
         # Memory scope = this channel only: the reply's audience is the
         # channel, so the agent must not read what this channel can't.

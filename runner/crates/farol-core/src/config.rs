@@ -21,7 +21,18 @@ pub struct RunnerConfig {
     pub workspace_id: Option<String>,
     /// Default agent command, e.g. ["claude", "--acp"] or ["gemini", "--acp"].
     pub agents: Vec<AgentEntry>,
-    /// Local paths the agent is allowed to work in (security boundary!).
+    /// Where derived working directories live: <root>/<workspace>/<channel>.
+    /// Everything under it is allowed — the runner made those paths itself.
+    #[serde(default = "crate::workspace::default_root")]
+    pub root_dir: PathBuf,
+    /// Channels bound to a directory the person already had, by Slack channel
+    /// id. A binding wins over the derived path: it is the explicit answer to
+    /// "where does this channel work".
+    #[serde(default)]
+    pub bindings: std::collections::HashMap<String, PathBuf>,
+    /// Extra paths the agent may work in, beyond the root and the bindings
+    /// (security boundary!).
+    #[serde(default)]
     pub allowed_cwds: Vec<PathBuf>,
     /// Auto-start on login (Tauri side reads this).
     #[serde(default = "default_true")]
@@ -59,6 +70,8 @@ impl Default for RunnerConfig {
                     args: p.args.iter().map(|a| (*a).to_string()).collect(),
                 })
                 .collect(),
+            root_dir: crate::workspace::default_root(),
+            bindings: std::collections::HashMap::new(),
             allowed_cwds: vec![],
             autostart: true,
         }
@@ -119,8 +132,36 @@ impl RunnerConfig {
             .collect()
     }
 
-    /// Security gate: reject any cwd outside the allowlist.
+    /// Security gate: reject any cwd the person has not opened up. Three ways
+    /// in — under the root the runner owns, a folder bound to a channel, or an
+    /// extra folder added by hand. Everything else is refused before a process
+    /// is spawned.
     pub fn is_cwd_allowed(&self, cwd: &std::path::Path) -> bool {
-        self.allowed_cwds.iter().any(|base| cwd.starts_with(base))
+        cwd.starts_with(&self.root_dir)
+            || self.bindings.values().any(|base| cwd.starts_with(base))
+            || self.allowed_cwds.iter().any(|base| cwd.starts_with(base))
+    }
+
+    /// Where a turn from this channel works: the binding if there is one, else
+    /// the derived path under the root. The directory is created if missing —
+    /// a first mention should not fail because nobody made a folder.
+    pub fn workspace_for(
+        &self,
+        channel_id: &str,
+        workspace_name: &str,
+        channel_name: &str,
+    ) -> std::io::Result<PathBuf> {
+        if let Some(bound) = self.bindings.get(channel_id) {
+            return Ok(bound.clone());
+        }
+        let workspace = if workspace_name.is_empty() {
+            self.workspace_id.clone().unwrap_or_else(|| "workspace".into())
+        } else {
+            workspace_name.to_string()
+        };
+        let channel = if channel_name.is_empty() { channel_id } else { channel_name };
+        let dir = crate::workspace::derive_path(&self.root_dir, &workspace, channel);
+        std::fs::create_dir_all(&dir)?;
+        Ok(dir)
     }
 }

@@ -39,17 +39,18 @@ impl SessionManager {
 
     /// Entry point for CloudMessage::AssignTurn.
     pub async fn handle_assign(&self, task: AssignTurn) {
-        // An empty cwd means the cloud has no opinion — the thread was never
-        // bound to a project. The machine decides then, and its first allowed
-        // directory is the only answer it can give truthfully.
+        // An empty cwd means the cloud has no opinion: it does not know what
+        // exists on this machine. The runner answers with the folder bound to
+        // this channel, or the one it derives from the names and creates.
         let cwd = if task.cwd.is_empty() {
-            match self.config.allowed_cwds.first() {
-                Some(dir) => dir.clone(),
-                None => {
-                    error!("no allowed project directory configured");
+            match self.config.workspace_for(
+                &task.slack_channel, &task.workspace_name, &task.channel_name,
+            ) {
+                Ok(dir) => dir,
+                Err(e) => {
+                    error!("cannot prepare a working directory: {e}");
                     self.finish(task.turn_id, TurnStatus::Failed, None,
-                                Some("no project folder allowed on this runner — \
-                                      add one in Farol Runner".into()));
+                                Some(format!("cannot prepare a working directory: {e}")));
                     return;
                 }
             }

@@ -22,20 +22,14 @@ async fn main() -> anyhow::Result<()> {
     tracing_subscriber::fmt::init();
 
     let mut cfg = RunnerConfig::load()?;
-    // First-run ergonomics: FAROL_ALLOWED_CWDS (colon-separated) overrides;
-    // an empty allowlist falls back to the home directory with a warning —
-    // turns only ever come from the owner's own mentions (BYOA), but tighten
-    // it in config.json when you can.
+    // FAROL_ALLOWED_CWDS (colon-separated) adds folders beyond the root; the
+    // root itself (~/Farol by default) is always allowed.
     if let Ok(list) = std::env::var("FAROL_ALLOWED_CWDS") {
         cfg.allowed_cwds = std::env::split_paths(&list).collect();
     }
-    if cfg.allowed_cwds.is_empty() {
-        if let Some(home) = std::env::var_os("HOME") {
-            tracing::warn!("allowed_cwds is empty — defaulting to {home:?}; \
-                            set FAROL_ALLOWED_CWDS or edit config.json to restrict");
-            cfg.allowed_cwds.push(home.into());
-        }
-    }
+    // No fallback to the home directory: an allowlist that quietly includes
+    // everything a person owns is not one. Work lands under the root instead,
+    // in a directory the runner creates for the channel it came from.
     let token = match std::env::var("FAROL_RUNNER_TOKEN")
         .ok()
         .or_else(|| RunnerConfig::token().ok().flatten())
@@ -60,10 +54,8 @@ async fn main() -> anyhow::Result<()> {
         os: std::env::consts::OS.into(),
     });
 
-    info!("cloud_url={} agents={:?} allowed_cwds={:?}",
-          cfg.cloud_url,
-          installed,
-          cfg.allowed_cwds);
+    info!("cloud_url={} agents={:?} root={:?} extra_cwds={:?}",
+          cfg.cloud_url, installed, cfg.root_dir, cfg.allowed_cwds);
 
     // The message handler needs the SessionManager, but it depends on the CloudSender,
     // which only exists after run_connection_loop — break the cycle with a slot.

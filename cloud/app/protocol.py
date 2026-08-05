@@ -73,9 +73,15 @@ class AssignTurn(BaseModel):
     turn_id: UUID
     slack_channel: str
     slack_thread_ts: str
+    # Human names, for the working directory the runner derives:
+    # ~/Farol/<workspace>/<channel>. Empty when Slack would not tell us.
+    workspace_name: str = ""
+    channel_name: str = ""
     prompt: str
     agent: str
-    cwd: str
+    # Explicit override. Empty means the runner derives its own path from the
+    # names above — it is the only side that knows what exists on that machine.
+    cwd: str = ""
     resume_session: Optional[str] = None
     memory: Optional[MemoryConfig] = None
 
