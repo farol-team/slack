@@ -44,14 +44,32 @@ const c=new Client({connectionString:process.env.DATABASE_URL,ssl:{rejectUnautho
   db/migrations/XXXX_name.sql
 ```
 
+## Cloud (data plane) — VM in workroom
+
+| Piece | Value |
+|---|---|
+| VM | `farol-cloud` (`fhmg7l4iie50a930hs9m`), COI (docker-compose via metadata), 2 vCPU / 4GB, zone ru-central1-a |
+| Static IP | `84.201.134.73` (address `e9bumepemrvpr4mjsvnn`); cloud on `:8000`, plain HTTP for now |
+| Services | `cloud` (image `cr.yandex/crpvie6a47kkgl03v9fm/farol-cloud:<git-sha>`) + `openviking` (ghcr, trusted mode, state in `/var/lib/farol/ovdata`) |
+| Health | `http://84.201.134.73:8000/healthz` → `{"ok":true,"runners":N,"turns":N}` |
+| SaaS link | SaaS revision carries `FAROL_CLOUD_URL=http://84.201.134.73:8000`; both share `INTERNAL_API_SECRET` |
+
+Redeploy cloud: build/push the image (see `cloud/Dockerfile`), update the
+`docker-compose` metadata key (`yc compute instance update-metadata`) or just
+`ssh yc-user@84.201.134.73` and `docker compose pull && up -d` in the COI
+compose dir. Config sources live in the deploy scratchpad and in the VM
+metadata.
+
 ## Known gaps
 
 - **Kimi OAuth is not configured**: `APP_ID=pending-kimi-app-id` is a placeholder,
   so login does not work yet. Register the OAuth app for the gateway URL, then
   redeploy with real `APP_ID` (+ rebuild with `VITE_APP_ID`/`VITE_KIMI_AUTH_URL`
   baked in — they are compile-time).
-- `cloud/` (data plane) is not deployed yet — the SaaS is up, but Slack events
-  need a deployed cloud + OpenViking pair pointing at this SaaS via
-  `FAROL_SAAS_URL` and the shared `INTERNAL_API_SECRET`.
+- Cloud placeholders: `SLACK_SIGNING_SECRET` (set after creating the Slack app
+  from `cloud/slack-app-manifest.yaml`) and the OpenViking embedding/VLM API
+  keys in `ov.conf` (writes work; semantic search fails until real keys).
+- No TLS on the cloud VM yet — Slack requires HTTPS for the events URL, so
+  put a cert (caddy/nginx or a domain + LB) in front before wiring Slack.
 - Custom domain: the gateway URL is machine-generated; attach a real domain via
   API Gateway custom domains when there is one.
