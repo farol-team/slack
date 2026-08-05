@@ -191,7 +191,7 @@ export default function Home() {
         <div className="relative mx-auto max-w-6xl px-6 pb-24 pt-24 text-center">
           <div className="mb-8 inline-flex items-center gap-2 rounded-full border border-violet-400/30 bg-violet-500/10 px-4 py-1.5 text-sm text-violet-200">
             <span className="h-1.5 w-1.5 rounded-full bg-violet-300" />
-            Built on OpenViking · VLDB 2026
+            Built on OpenViking
           </div>
           <h1 className="mx-auto max-w-3xl text-5xl font-bold leading-[1.05] tracking-tight sm:text-6xl">
             Your AI agents
