@@ -24,6 +24,50 @@ def check_internal(request: Request) -> None:
         raise HTTPException(status_code=401, detail="unauthorized")
 
 
+@api.get("/internal/channels/{team_id}")
+async def list_channels(team_id: str, request: Request):
+    """Public channels of a workspace, with whether the bot is in them.
+    The dashboard shows this; the bot token never leaves the cloud."""
+    check_internal(request)
+    from slack_sdk.web.async_client import AsyncWebClient
+    token = await deps.resolve_bot_token(team_id)
+    client = AsyncWebClient(token=token)
+    out, cursor = [], None
+    # One page is 200 channels; two pages is enough for any team that has
+    # not made channel sprawl its hobby, and keeps the dashboard snappy.
+    for _ in range(2):
+        res = await client.conversations_list(
+            types="public_channel", exclude_archived=True, limit=200,
+            cursor=cursor)
+        for ch in res.get("channels", []):
+            out.append({"id": ch["id"], "name": ch.get("name", ""),
+                        "is_member": bool(ch.get("is_member"))})
+        cursor = (res.get("response_metadata") or {}).get("next_cursor")
+        if not cursor:
+            break
+    out.sort(key=lambda c: (not c["is_member"], c["name"]))
+    return {"channels": out}
+
+
+@api.post("/internal/channels/{team_id}/join")
+async def join_channel(team_id: str, request: Request):
+    """Put the bot in a channel without anyone typing /invite."""
+    check_internal(request)
+    body = await request.json()
+    channel = body.get("channel_id")
+    if not channel:
+        raise HTTPException(status_code=400, detail="channel_id required")
+    from slack_sdk.web.async_client import AsyncWebClient
+    client = AsyncWebClient(token=await deps.resolve_bot_token(team_id))
+    try:
+        await client.conversations_join(channel=channel)
+    except Exception as e:
+        # already_in_channel is success as far as the caller is concerned.
+        if "already_in_channel" not in str(e):
+            raise HTTPException(status_code=400, detail=str(e))
+    return {"ok": True}
+
+
 @api.post("/internal/provision")
 async def provision(request: Request):
     """Create the OpenViking account for a freshly installed workspace.
@@ -37,6 +81,33 @@ async def provision(request: Request):
     result = await deps.ov_client.create_account(account)
     return {"ok": True, "account": account,
             "existing": bool(result.get("existing"))}
+
+
+@api.post("/internal/memory/status")
+async def memory_status(request: Request):
+    """Liveness of the OpenViking server, for the dashboard badge.
+    The SaaS has no direct OV route — we answer on its behalf."""
+    check_internal(request)
+    return {"online": await deps.ov_client.status()}
+
+
+@api.post("/internal/memory/search")
+async def memory_search(request: Request):
+    """Semantic search over the workspace memory, proxied for the
+    dashboard (agents get the same via the MCP gateway)."""
+    check_internal(request)
+    body = await request.json()
+    team_id = body.get("team_id")
+    query = body.get("query")
+    if not team_id or not query:
+        raise HTTPException(status_code=400, detail="team_id and query required")
+    account = await deps.resolve_ov_account(team_id)
+    results = await deps.ov_client.find(
+        account, "farol-dashboard", query,
+        target_uri=body.get("scope") or "viking://resources/",
+        limit=int(body.get("limit") or 10),
+    )
+    return {"results": results}
 
 
 @api.post("/internal/memory/stats")

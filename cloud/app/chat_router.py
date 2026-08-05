@@ -67,6 +67,9 @@ class Turn:
     # The message that asked: reactions land there, not on the thread root,
     # so a follow-up in a long thread marks itself and not the first mention.
     trigger_ts: str = ""
+    # Files attached to the asking message: the runner fetches them through
+    # the gateway, so Slack's private URLs and the bot token stay here.
+    attachments: list = field(default_factory=list)
     status: str = "running"
     # permission_id -> slack message ts (to update the buttons)
     permission_msgs: dict[str, str] = field(default_factory=dict)
@@ -224,9 +227,11 @@ class ChatRouter:
 
     async def start_turn(self, chat: Chat, runner: Runner, prompt: str,
                          memory: Optional[p.MemoryConfig] = None,
-                         trigger_ts: str = "") -> Turn:
+                         trigger_ts: str = "",
+                         attachments: Optional[list] = None) -> Turn:
         turn = Turn(turn_id=uuid4(), chat=chat, runner=runner, prompt=prompt,
-                    trigger_ts=trigger_ts or chat.thread_ts)
+                    trigger_ts=trigger_ts or chat.thread_ts,
+                    attachments=attachments or [])
         self.turns[turn.turn_id] = turn
         chat.status = "running"
         chat.current_turn_id = turn.turn_id
@@ -235,6 +240,14 @@ class ChatRouter:
             turn_id=turn.turn_id, slack_channel=chat.slack_channel,
             slack_thread_ts=chat.thread_ts, prompt=prompt,
             workspace_name=chat.workspace_name, channel_name=chat.channel_name,
+            attachments=[
+                p.Attachment(
+                    name=a["name"], mime=a["mime"], size=a["size"],
+                    url=f"{os.environ.get('FAROL_CLOUD_PUBLIC_URL', '').rstrip('/')}"
+                        f"/files/{turn.turn_id}/{i}",
+                )
+                for i, a in enumerate(turn.attachments)
+            ],
             agent=chat.agent or (runner.agents[0] if runner.agents else ""),
             cwd=chat.cwd, resume_session=chat.session_id, memory=memory,
         )

@@ -67,6 +67,18 @@ pub struct AssignTurn {
     pub resume_session: Option<String>,
     /// Memory endpoint config injected by the cloud (OpenViking MCP).
     pub memory: Option<MemoryConfig>,
+    /// Files attached to the asking message. Fetched from the cloud gateway
+    /// with the task token, never from Slack directly.
+    #[serde(default)]
+    pub attachments: Vec<Attachment>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Attachment {
+    pub name: String,
+    pub mime: String,
+    pub size: u64,
+    pub url: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

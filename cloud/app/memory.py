@@ -101,4 +101,24 @@ class OpenVikingClient:
 
     # ---------- retrieval (dashboard / debugging) ----------
 
+    async def status(self) -> bool:
+        """True when the OV server answers its status endpoint."""
+        try:
+            res = await self._client.get("/api/v1/status")
+            return res.is_success
+        except httpx.HTTPError:
+            return False
+
+    async def find(self, account_id: str, user_id: str, query: str,
+                   target_uri: str = "viking://resources/",
+                   limit: int = 10) -> list[dict]:
+        """Semantic search over the account's memory."""
+        res = await self._client.post(
+            "/api/v1/search/find",
+            json={"query": query, "target_uri": target_uri, "limit": limit},
+            headers=self._tenant(account_id, user_id),
+        )
+        res.raise_for_status()
+        data = res.json()
+        return data.get("results") or data.get("result") or []
 

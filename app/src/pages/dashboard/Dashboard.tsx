@@ -78,6 +78,16 @@ export default function Dashboard() {
           : false,
     },
   );
+  const { data: channelList } = trpc.slack.channels.useQuery(
+    { workspaceId: sel.selected?.id ?? 0 },
+    { enabled: !!sel.selected && !!overview?.workspace.slackTeamId },
+  );
+  const joinChannel = trpc.slack.joinChannel.useMutation({
+    onSuccess: () => {
+      utils.slack.channels.invalidate();
+      utils.workspace.overview.invalidate();
+    },
+  });
   const [copied, setCopied] = useState<string | null>(null);
 
   const copy = (id: string, text: string) => {
@@ -204,6 +214,29 @@ export default function Dashboard() {
                           #{c.name}
                         </Badge>
                       ))}
+                      {/* Channels the bot is not in yet: joining is a click
+                          here instead of an /invite typed in Slack. */}
+                      {(channelList?.channels ?? [])
+                        .filter((c) => !c.is_member)
+                        .slice(0, 8)
+                        .map((c) => (
+                          <Button
+                            key={c.id}
+                            variant="outline"
+                            size="sm"
+                            className="h-6 px-2 text-xs"
+                            disabled={joinChannel.isPending || !sel.selected}
+                            onClick={() =>
+                              sel.selected &&
+                              joinChannel.mutate({
+                                workspaceId: sel.selected.id,
+                                channelId: c.id,
+                              })
+                            }
+                          >
+                            <Plus className="h-3 w-3 mr-1" /> #{c.name}
+                          </Button>
+                        ))}
                       {/* Permissions are granted at install time, so a new
                           scope needs this door to stay open after the first
                           connection. */}

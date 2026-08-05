@@ -33,6 +33,14 @@ export const SLACK_SCOPES = [
   // authors. Missing here, a fresh install cannot route a single mention.
   "users:read",
   "users:read.email",
+  // A DM to the bot is the same conversation, with its own memory scope.
+  "im:history",
+  "im:read",
+  "im:write",
+  // Screenshots and logs people attach to the question they are asking.
+  "files:read",
+  // So the dashboard can put the bot in a channel without an /invite.
+  "channels:join",
 ].join(",");
 
 const redirectUri = () => `${PUBLIC_URL}/api/slack/callback`;
@@ -193,6 +201,66 @@ export const slackRouter = createRouter({
       } catch {
         return { state: "unavailable" as const };
       }
+    }),
+
+  /** Public channels of the linked workspace, and whether the bot is in
+   *  them. The bot token stays in the cloud; this only proxies. */
+  channels: authedQuery
+    .input(z.object({ workspaceId: z.number() }))
+    .query(async ({ ctx, input }) => {
+      await requireMembership(input.workspaceId, ctx.user.id);
+      const db = getDb();
+      const [ws] = await db
+        .select()
+        .from(workspaces)
+        .where(eq(workspaces.id, input.workspaceId))
+        .limit(1);
+      if (!ws?.slackTeamId || !env.farolCloudUrl || !INTERNAL_SECRET) {
+        return { channels: [] as { id: string; name: string; is_member: boolean }[] };
+      }
+      try {
+        const res = await fetch(
+          `${env.farolCloudUrl}/internal/channels/${ws.slackTeamId}`,
+          { headers: { "x-internal-secret": INTERNAL_SECRET } },
+        );
+        if (!res.ok) return { channels: [] };
+        return (await res.json()) as {
+          channels: { id: string; name: string; is_member: boolean }[];
+        };
+      } catch {
+        return { channels: [] };
+      }
+    }),
+
+  /** Put the bot in a channel — no /invite, no switching to Slack. */
+  joinChannel: authedQuery
+    .input(z.object({ workspaceId: z.number(), channelId: z.string() }))
+    .mutation(async ({ ctx, input }) => {
+      await requireMembership(input.workspaceId, ctx.user.id);
+      const db = getDb();
+      const [ws] = await db
+        .select()
+        .from(workspaces)
+        .where(eq(workspaces.id, input.workspaceId))
+        .limit(1);
+      if (!ws?.slackTeamId || !env.farolCloudUrl || !INTERNAL_SECRET) {
+        throw new TRPCError({ code: "PRECONDITION_FAILED", message: "not connected" });
+      }
+      const res = await fetch(
+        `${env.farolCloudUrl}/internal/channels/${ws.slackTeamId}/join`,
+        {
+          method: "POST",
+          headers: {
+            "content-type": "application/json",
+            "x-internal-secret": INTERNAL_SECRET,
+          },
+          body: JSON.stringify({ channel_id: input.channelId }),
+        },
+      );
+      if (!res.ok) {
+        throw new TRPCError({ code: "BAD_REQUEST", message: await res.text() });
+      }
+      return { ok: true };
     }),
 });
 

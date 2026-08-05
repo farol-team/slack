@@ -68,6 +68,15 @@ class TurnResult(BaseModel):
 
 # ---------- cloud -> runner ----------
 
+class Attachment(BaseModel):
+    """A file the asking message carried. `url` points at this cloud's
+    gateway, not at Slack: the runner fetches it with its task token."""
+    name: str
+    mime: str
+    size: int
+    url: str
+
+
 class AssignTurn(BaseModel):
     type: Literal["assign_turn"] = "assign_turn"
     turn_id: UUID
@@ -84,6 +93,7 @@ class AssignTurn(BaseModel):
     cwd: str = ""
     resume_session: Optional[str] = None
     memory: Optional[MemoryConfig] = None
+    attachments: list[Attachment] = []
 
 
 class PermissionDecision(BaseModel):

@@ -15,9 +15,14 @@ oauth_config:
       - app_mentions:read
       - channels:read
       - channels:history
+      - channels:join
       - chat:write
+      - files:read
       - groups:read
       - groups:history
+      - im:history
+      - im:read
+      - im:write
       - reactions:write
       - users:read
       - users:read.email
@@ -32,6 +37,7 @@ settings:
     request_url: https://REPLACE-ME.ngrok.io/slack/events
     bot_events:
       - app_mention
+      - message.im       # a DM to the bot is a task, no mention needed
       - message.channels
       - message.groups   # приватные каналы тоже пишем в память (OV channel = id канала)
   org_deploy_enabled: false

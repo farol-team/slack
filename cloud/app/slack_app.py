@@ -334,18 +334,20 @@ def register_handlers(app: AsyncApp, renderer: SlackRenderer,
                       resolve_installation, resolve_member) -> None:
     resolve_channel_name = make_channel_name_resolver(resolve_installation)
 
-    @app.event("app_mention")
-    async def on_mention(event, say, context):
+    async def dispatch(event, say, context, *, prompt: str,
+                       channel_name: Optional[str] = None) -> None:
+        """One path for both ways of asking: a mention in a channel and a
+        direct message. Everything after 'who asked' is identical."""
         channel = event["channel"]
         thread_ts = event.get("thread_ts", event["ts"])
-        prompt = event["text"]
         team_id = context["team_id"]
 
         # Runners register under the SaaS ovAccountId (runner.validate),
         # not the Slack team id — resolve the installation to bridge the
         # two id spaces before routing.
         try:
-            workspace = (await resolve_installation(team_id))["ov_account_id"]
+            inst = await resolve_installation(team_id)
+            workspace = inst["ov_account_id"]
         except Exception:
             log.exception("installation resolve failed for %s", team_id)
             await say(text="This Slack workspace is not linked to a service "
@@ -353,8 +355,8 @@ def register_handlers(app: AsyncApp, renderer: SlackRenderer,
                       thread_ts=thread_ts)
             return
 
-        # BYOA: the task runs on the mention author's own runner, under
-        # their identity — never on a teammate's machine.
+        # BYOA: the task runs on the author's own runner, under their
+        # identity — never on a teammate's machine.
         author = event["user"]
         user_key = await resolve_member(team_id, author)
         if user_key is None:
@@ -363,12 +365,10 @@ def register_handlers(app: AsyncApp, renderer: SlackRenderer,
                            "email, then mention me again.", thread_ts=thread_ts)
             return
 
-        # Chat = the thread. First mention opens it and binds owner/cwd;
-        # later mentions are new turns resuming the same ACP session.
-        # Ownership is checked before anything else: a foreign author in
-        # an owned thread is refused even if they have their own runner.
-        # (slack_team stays the Slack team id: the renderer resolves the
-        # bot token by team, not by OV account.)
+        # Chat = the thread. The first message opens it and binds owner/cwd;
+        # later ones are new turns resuming the same ACP session. Ownership
+        # is checked before anything else: a foreign author in an owned
+        # thread is refused even if they have their own runner.
         chat = router.get_chat(channel, thread_ts)
         if chat is not None and chat.user_key != user_key:
             await say(text=f"<@{author}> this conversation runs on its "
@@ -383,35 +383,66 @@ def register_handlers(app: AsyncApp, renderer: SlackRenderer,
         runner = router.pick_runner(workspace, user_key=user_key)
         if runner is None:
             await say(text=f"<@{author}> you don't have a runner connected. "
-                           "Install Farol Runner on your machine and connect "
-                           "it with a token from the dashboard.",
-                      thread_ts=thread_ts)
+                           "Install Farol Runner from the dashboard and press "
+                           "Connect to Slack.", thread_ts=thread_ts)
             return
 
         if chat is None:
             # Names, not ids: the runner builds ~/Farol/<workspace>/<channel>
-            # out of them. cwd stays empty unless an operator pinned one —
-            # only the machine knows what directories it has.
-            inst = await resolve_installation(team_id)
+            # out of them. cwd stays empty — only the machine knows what
+            # directories it has.
+            name = (channel_name if channel_name is not None
+                    else await resolve_channel_name(team_id, channel))
             chat = router.open_chat(
                 slack_team=team_id, channel=channel, thread_ts=thread_ts,
                 workspace_id=workspace, user_key=user_key,
-                workspace_name=inst.get("team_name") or "",
-                channel_name=await resolve_channel_name(team_id, channel))
+                workspace_name=inst.get("team_name") or "", channel_name=name)
 
-        # Memory scope = this channel only: the reply's audience is the
-        # channel, so the agent must not read what this channel can't.
+        # Memory scope = this conversation only: the reply's audience is the
+        # channel (or the DM), so the agent must not read what it cannot see.
         memory = build_memory(workspace, user_key, channel)
+        attachments = await collect_attachments(event, team_id)
         turn = await router.start_turn(chat, runner, prompt, memory,
-                                       trigger_ts=event["ts"])
+                                       trigger_ts=event["ts"],
+                                       attachments=attachments)
         # The machine has it: say so on the message that asked, before the
         # agent has anything to show.
         await renderer.react(turn, "eyes")
 
+    async def collect_attachments(event, team_id: str) -> list[dict]:
+        """What was attached to the question. The bytes stay here: the runner
+        fetches them through the gateway with the task token it already has,
+        so the bot token never leaves the cloud."""
+        files = event.get("files") or []
+        out = []
+        for f in files:
+            if not f.get("url_private"):
+                continue
+            out.append({
+                "name": f.get("name") or f.get("id") or "attachment",
+                "mime": f.get("mimetype") or "application/octet-stream",
+                "size": int(f.get("size") or 0),
+                "url_private": f["url_private"],
+                "team_id": team_id,
+            })
+        return out
+
+    @app.event("app_mention")
+    async def on_mention(event, say, context):
+        await dispatch(event, say, context, prompt=event["text"])
+
     @app.event("message")
-    async def on_message(event, context):
+    async def on_message(event, say, context):
         # Skip bot messages and mentions (mentions are tasks, handled above).
         if event.get("bot_id") or event.get("subtype"):
+            return
+
+        # A DM is a task without ceremony: no mention needed, and nothing of
+        # it goes into team memory — a private conversation is scoped to
+        # itself, and the channel archive belongs to the channel.
+        if event.get("channel_type") == "im":
+            await dispatch(event, say, context,
+                           prompt=event.get("text", ""), channel_name="dm")
             return
         team_id = context["team_id"]
         try:

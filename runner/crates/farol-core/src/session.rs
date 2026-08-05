@@ -94,6 +94,25 @@ impl SessionManager {
             crate::agents::spawn_path(None),
         )];
 
+        // Whatever the person attached lands next to the work, before the
+        // agent starts: a prompt that mentions a file it cannot open is worse
+        // than one that never mentioned it.
+        let prompt = match self.fetch_attachments(&task, &cwd).await {
+            Ok(paths) if !paths.is_empty() => {
+                let list = paths
+                    .iter()
+                    .map(|p| format!("- {}", p.display()))
+                    .collect::<Vec<_>>()
+                    .join("\n");
+                format!("{}\n\nAttached files:\n{}", task.prompt, list)
+            }
+            Ok(_) => task.prompt.clone(),
+            Err(e) => {
+                error!("attachments failed: {e}");
+                format!("{}\n\n(An attachment could not be downloaded: {e})", task.prompt)
+            }
+        };
+
         let client = match AcpClient::spawn(&agent.command, &agent.args, &cwd, &env, ev_tx).await {
             Ok(c) => c,
             Err(e) => {
@@ -179,7 +198,7 @@ impl SessionManager {
         // prompt ждёт финальный ответ агента — потенциально минуты.
         // Мьютекса на клиенте нет: respond_permission/cancel пишут в stdin
         // параллельно через свой мьютекс внутри AcpClient.
-        let result = client.prompt(&sid, &task.prompt).await;
+        let result = client.prompt(&sid, &prompt).await;
 
         // If the entry is gone, the task was cancelled: the agent process
         // is already dead and the Cancelled result already sent.
@@ -193,6 +212,44 @@ impl SessionManager {
             Ok(()) => self.finish(task.turn_id, TurnStatus::Done, session_id, None),
             Err(e) => self.finish(task.turn_id, TurnStatus::Failed, session_id, Some(e.to_string())),
         }
+    }
+
+    /// Pull the asking message's files into the working directory. The task
+    /// token authorises it — the same one the memory endpoint takes — so the
+    /// runner never sees a Slack token.
+    async fn fetch_attachments(
+        &self,
+        task: &AssignTurn,
+        cwd: &std::path::Path,
+    ) -> anyhow::Result<Vec<PathBuf>> {
+        if task.attachments.is_empty() {
+            return Ok(vec![]);
+        }
+        let token = task.memory.as_ref().map(|m| m.user_key.clone()).unwrap_or_default();
+        let dir = cwd.join(".farol").join("attachments");
+        tokio::fs::create_dir_all(&dir).await?;
+        let http = reqwest::Client::new();
+        let mut saved = Vec::new();
+        for att in &task.attachments {
+            let res = http
+                .get(&att.url)
+                .header("Authorization", format!("Bearer {token}"))
+                .send()
+                .await?;
+            if !res.status().is_success() {
+                anyhow::bail!("{} -> HTTP {}", att.name, res.status());
+            }
+            // The name comes from Slack: keep the leaf, never a path.
+            let leaf = std::path::Path::new(&att.name)
+                .file_name()
+                .map(|n| n.to_string_lossy().to_string())
+                .unwrap_or_else(|| "attachment".into());
+            let path = dir.join(leaf);
+            tokio::fs::write(&path, res.bytes().await?).await?;
+            info!("attachment saved: {}", path.display());
+            saved.push(path);
+        }
+        Ok(saved)
     }
 
     /// Slack pressed Approve/Deny — relay into the agent.

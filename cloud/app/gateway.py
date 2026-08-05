@@ -17,6 +17,7 @@ import base64
 import hashlib
 import hmac
 import json
+from uuid import UUID
 import logging
 import time
 from typing import Any, Optional
@@ -191,4 +192,46 @@ def create_gateway_router(ov_url: str, ov_root_key: str, secret: str) -> APIRout
         return StreamingResponse(relay(), status_code=resp.status_code,
                                  headers=passthrough)
 
+    @router.get("/files/{turn_id}/{index}")
+    async def turn_file(turn_id: str, index: int, request: Request):
+        """Hand the runner a file the asking message carried. Slack's
+        `url_private` needs the bot token, which must never leave this
+        service — so the runner asks here, with the task token it already
+        holds for memory, and the scope check is the same one."""
+        token = (request.headers.get("authorization") or "")
+        token = token.removeprefix("Bearer ").strip()
+        scope = verify_task_token(secret, token)
+        if scope is None:
+            return JSONResponse({"error": "invalid or expired task token"},
+                                status_code=401)
+
+        from .chat_router import router as chat_router
+        from .deps import resolve_installation
+        turn = chat_router.turns.get(UUID(turn_id)) if _is_uuid(turn_id) else None
+        if turn is None or index >= len(turn.attachments):
+            return JSONResponse({"error": "no such attachment"}, status_code=404)
+        # The token is scoped to an account; a turn of another tenant is not
+        # this caller's to read, however valid their token is.
+        if turn.chat.workspace_id != scope.get("a"):
+            return JSONResponse({"error": "not your turn"}, status_code=403)
+
+        att = turn.attachments[index]
+        inst = await resolve_installation(att["team_id"])
+        async with httpx.AsyncClient(timeout=60, follow_redirects=True) as client:
+            res = await client.get(
+                att["url_private"],
+                headers={"Authorization": f"Bearer {inst['bot_token']}"})
+        if res.status_code != 200:
+            return JSONResponse({"error": "slack refused the file"},
+                                status_code=502)
+        return Response(content=res.content, media_type=att["mime"])
+
     return router
+
+
+def _is_uuid(value: str) -> bool:
+    try:
+        UUID(value)
+        return True
+    except ValueError:
+        return False

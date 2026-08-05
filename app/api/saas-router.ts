@@ -422,27 +422,21 @@ export const chatSyncRouter = createRouter({
 // Memory browser (proxy to OpenViking)
 // ---------------------------------------------------------------------------
 
-const OV_URL = process.env.OPENVIKING_URL ?? "";
-const OV_ROOT_KEY = process.env.OPENVIKING_ROOT_KEY ?? "";
-
-async function ovFetch(path: string, body: unknown, account?: string) {
-  if (!OV_URL) throw new TRPCError({ code: "PRECONDITION_FAILED", message: "OpenViking not configured" });
-  // Trusted mode: identity travels in headers, root key authorizes us
-  // as the identity-injecting upstream.
-  const headers: Record<string, string> = {
-    "Content-Type": "application/json",
-    "X-API-Key": OV_ROOT_KEY,
-  };
-  if (account) {
-    headers["X-OpenViking-Account"] = account;
-    headers["X-OpenViking-User"] = "farol-dashboard";
-  }
-  const res = await fetch(`${OV_URL}${path}`, {
+/** All OV access goes through the cloud's internal API — the SaaS has
+ *  no direct OpenViking route. */
+async function cloudMemoryFetch(path: string, body: unknown) {
+  const cloudUrl = (process.env.FAROL_CLOUD_URL ?? "").replace(/\/$/, "");
+  if (!cloudUrl || !INTERNAL_SECRET)
+    throw new TRPCError({ code: "PRECONDITION_FAILED", message: "cloud not configured" });
+  const res = await fetch(`${cloudUrl}${path}`, {
     method: "POST",
-    headers,
+    headers: {
+      "Content-Type": "application/json",
+      "x-internal-secret": INTERNAL_SECRET,
+    },
     body: JSON.stringify(body),
   });
-  if (!res.ok) throw new TRPCError({ code: "BAD_GATEWAY", message: `OpenViking ${res.status}` });
+  if (!res.ok) throw new TRPCError({ code: "BAD_GATEWAY", message: `cloud ${res.status}` });
   return res.json();
 }
 
@@ -496,16 +490,12 @@ export const memoryRouter = createRouter({
       await requireMembership(input.workspaceId, ctx.user.id);
       const db = getDb();
       const [ws] = await db.select().from(workspaces).where(eq(workspaces.id, input.workspaceId)).limit(1);
-      if (!ws) throw new TRPCError({ code: "NOT_FOUND" });
-      const data = (await ovFetch(
-        "/api/v1/search/find",
-        {
-          query: input.query,
-          target_uri: input.scope ?? "viking://resources/",
-          limit: 10,
-        },
-        ws.ovAccountId,
-      )) as { results?: unknown[] };
+      if (!ws?.slackTeamId) throw new TRPCError({ code: "NOT_FOUND" });
+      const data = (await cloudMemoryFetch("/internal/memory/search", {
+        team_id: ws.slackTeamId,
+        query: input.query,
+        scope: input.scope,
+      })) as { results?: unknown[] };
       return { results: data.results ?? [] };
     }),
 
@@ -513,14 +503,13 @@ export const memoryRouter = createRouter({
     .input(z.object({ workspaceId: z.number() }))
     .query(async ({ ctx, input }) => {
       await requireMembership(input.workspaceId, ctx.user.id);
-      if (!OV_URL) return { configured: false, online: false };
       try {
-        const res = await fetch(`${OV_URL}/api/v1/status`, {
-          headers: { "X-API-Key": OV_ROOT_KEY },
-        });
-        return { configured: true, online: res.ok };
+        const data = (await cloudMemoryFetch("/internal/memory/status", {})) as {
+          online?: boolean;
+        };
+        return { configured: true, online: data.online === true };
       } catch {
-        return { configured: true, online: false };
+        return { configured: false, online: false };
       }
     }),
 });
