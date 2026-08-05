@@ -4,6 +4,7 @@ import { createWorkspaceForUser } from "./queries/workspaces";
 import {
   channels,
   chats,
+  memoryFiles,
   runnerConnectCodes,
   runners,
   slackInstallations,
@@ -451,6 +452,9 @@ export type MemoryStats = {
   totalFiles: number;
   totalBytes: number;
   lastModified: string | null;
+  /** Files shared in Slack and read into memory. Counted here rather than
+   *  in OpenViking, which lists an imported resource as a 0-byte directory. */
+  sharedFiles: { count: number; bytes: number };
 };
 
 export const memoryRouter = createRouter({
@@ -467,6 +471,14 @@ export const memoryRouter = createRouter({
         .where(eq(workspaces.id, input.workspaceId))
         .limit(1);
       if (!ws?.slackTeamId) return null;
+      const fileRows = await db
+        .select({ bytes: memoryFiles.bytes })
+        .from(memoryFiles)
+        .where(eq(memoryFiles.workspaceId, ws.id));
+      const fileStats = {
+        count: fileRows.length,
+        bytes: fileRows.reduce((sum, r) => sum + (r.bytes ?? 0), 0),
+      };
       const cloudUrl = (process.env.FAROL_CLOUD_URL ?? "").replace(/\/$/, "");
       if (!cloudUrl || !INTERNAL_SECRET) return null;
       try {
@@ -479,7 +491,8 @@ export const memoryRouter = createRouter({
           body: JSON.stringify({ team_id: ws.slackTeamId }),
         });
         if (!res.ok) return null;
-        return (await res.json()) as MemoryStats;
+        const cloud = (await res.json()) as Omit<MemoryStats, "sharedFiles">;
+        return { ...cloud, sharedFiles: fileStats };
       } catch {
         return null;
       }
@@ -528,6 +541,64 @@ export const billingRouter = createRouter({
       const db = getDb();
       await db.update(workspaces).set({ plan: input.plan }).where(eq(workspaces.id, input.workspaceId));
       return { ok: true };
+    }),
+
+  /** INTERNAL: the cloud imported a shared file into team memory. */
+  fileImported: publicQuery
+    .input(
+      z.object({
+        ovAccountId: z.string(),
+        slackChannelId: z.string(),
+        slackFileId: z.string(),
+        name: z.string(),
+        mime: z.string().optional(),
+        bytes: z.number().int().nonnegative().default(0),
+        uri: z.string(),
+        secret: z.string().optional(),
+      }),
+    )
+    .mutation(async ({ ctx, input }) => {
+      requireInternal(ctx, input.secret);
+      const db = getDb();
+      const [ws] = await db
+        .select()
+        .from(workspaces)
+        .where(eq(workspaces.ovAccountId, input.ovAccountId))
+        .limit(1);
+      if (!ws) throw new TRPCError({ code: "NOT_FOUND", message: "workspace" });
+      await db
+        .insert(memoryFiles)
+        .values({
+          workspaceId: ws.id,
+          slackChannelId: input.slackChannelId,
+          slackFileId: input.slackFileId,
+          name: input.name,
+          mime: input.mime ?? null,
+          bytes: input.bytes,
+          uri: input.uri,
+        })
+        .onConflictDoUpdate({
+          target: memoryFiles.slackFileId,
+          set: { uri: input.uri, bytes: input.bytes, name: input.name },
+        });
+      return { ok: true };
+    }),
+
+  /** INTERNAL: Slack deleted a file — hand back where its copy lives so the
+   *  cloud can remove it, and forget the record. */
+  fileDeleted: publicQuery
+    .input(z.object({ slackFileId: z.string(), secret: z.string().optional() }))
+    .mutation(async ({ ctx, input }) => {
+      requireInternal(ctx, input.secret);
+      const db = getDb();
+      const [row] = await db
+        .select()
+        .from(memoryFiles)
+        .where(eq(memoryFiles.slackFileId, input.slackFileId))
+        .limit(1);
+      if (!row) return { uri: null };
+      await db.delete(memoryFiles).where(eq(memoryFiles.id, row.id));
+      return { uri: row.uri };
     }),
 
   /** Whether files shared in Slack are copied into team memory. A policy

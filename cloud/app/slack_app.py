@@ -272,6 +272,26 @@ class SlackRenderer:
 # Ingestion: every Slack message -> OpenViking (batched)
 # ---------------------------------------------------------------------------
 
+async def _mirror_file(account: str, channel: str, file_id: str, name: str,
+                       mime: str, size: int, uri: str) -> None:
+    """Record an imported file in the SaaS. OpenViking lists an imported
+    resource as a 0-byte directory, so a dashboard that wants to say how much
+    was stored has to be told; the record also turns a Slack deletion into
+    one lookup instead of a walk of every channel."""
+    try:
+        saas = os.environ["FAROL_SAAS_URL"].rstrip("/")
+        secret = os.environ["INTERNAL_API_SECRET"]
+        async with httpx.AsyncClient(timeout=10) as client:
+            await client.post(
+                f"{saas}/api/trpc/memory.fileImported",
+                json={"json": {"ovAccountId": account, "slackChannelId": channel,
+                               "slackFileId": file_id, "name": name, "mime": mime,
+                               "bytes": size, "uri": uri, "secret": secret}},
+                headers={"x-internal-secret": secret})
+    except Exception:
+        log.warning("recording file %s in the SaaS failed", name)
+
+
 class IngestionBuffer:
     """Batch messages per channel and flush to OpenViking resources."""
 
@@ -328,6 +348,8 @@ class IngestionBuffer:
             return None
         if uri:
             log.info("file in memory: %s -> %s", name, uri)
+            await _mirror_file(workspace_id, channel, file_id, name,
+                               f.get("mimetype") or "", size, uri)
         return uri
 
     def add(self, workspace_id: str, channel: str, line: str,
@@ -544,38 +566,30 @@ def register_handlers(app: AsyncApp, renderer: SlackRenderer,
 
     @app.event("file_deleted")
     async def on_file_deleted(event, context):
-        """What Slack forgets, memory forgets. The event carries only the file
-        id, so the channel is looked up rather than assumed: resources are
-        named `<file id>-<name>`, and channel directories are few."""
+        """What Slack forgets, memory forgets. The SaaS knows where the copy
+        landed, so this is one lookup rather than a walk of every channel."""
         file_id = event.get("file_id")
         if not file_id:
             return
         team_id = context["team_id"]
         try:
             account = (await resolve_installation(team_id))["ov_account_id"]
+            saas = os.environ["FAROL_SAAS_URL"].rstrip("/")
+            secret = os.environ["INTERNAL_API_SECRET"]
+            async with httpx.AsyncClient(timeout=10) as client:
+                res = await client.post(
+                    f"{saas}/api/trpc/memory.fileDeleted",
+                    json={"json": {"slackFileId": file_id, "secret": secret}},
+                    headers={"x-internal-secret": secret})
+            uri = (((res.json() or {}).get("result") or {})
+                   .get("data", {}).get("json", {}).get("uri"))
         except Exception:
-            log.exception("file_deleted: unresolved team %s", team_id)
+            log.exception("file_deleted: lookup failed for %s", file_id)
             return
-        try:
-            channels = await ingestion.ov.ls(account, "farol-ingest",
-                                             "viking://resources/slack")
-        except Exception:
-            log.exception("file_deleted: cannot list channels")
+        if not uri:
             return
-        for ch in channels:
-            uri = ch.get("uri", "")
-            if not ch.get("isDir"):
-                continue
-            try:
-                entries = await ingestion.ov.ls(account, "farol-ingest",
-                                                f"{uri}/files")
-            except Exception:
-                continue
-            for entry in entries:
-                if entry.get("uri", "").rsplit("/", 1)[-1].startswith(file_id):
-                    ok = await ingestion.ov.delete_uri(account, entry["uri"])
-                    log.info("file_deleted: %s removed=%s", entry["uri"], ok)
-                    return
+        ok = await ingestion.ov.delete_uri(account, uri)
+        log.info("file_deleted: %s removed=%s", uri, ok)
 
     @app.action("perm_approve")
     async def approve(ack, action):

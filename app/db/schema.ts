@@ -159,6 +159,25 @@ export const turns = pgTable("turns", {
 });
 export type Turn = typeof turns.$inferSelect;
 
+export const memoryFiles = pgTable("memory_files", {
+  id: serial("id").primaryKey(),
+  workspaceId: integer("workspaceId")
+    .notNull()
+    .references(() => workspaces.id),
+  slackChannelId: varchar("slackChannelId", { length: 64 }).notNull(),
+  /** Slack's file id — what a `file_deleted` event gives us. */
+  slackFileId: varchar("slackFileId", { length: 64 }).notNull().unique(),
+  name: varchar("name", { length: 512 }).notNull(),
+  mime: varchar("mime", { length: 128 }),
+  /** Size as Slack reported it: OpenViking lists an imported resource as a
+   *  directory of size 0, so this is the only honest number we have. */
+  bytes: integer("bytes").notNull().default(0),
+  /** Where it landed in the account's viking filesystem. */
+  uri: varchar("uri", { length: 1024 }).notNull(),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+});
+export type MemoryFile = typeof memoryFiles.$inferSelect;
+
 export const slackInstallations = pgTable("slack_installations", {
   id: serial("id").primaryKey(),
   workspaceId: integer("workspaceId")

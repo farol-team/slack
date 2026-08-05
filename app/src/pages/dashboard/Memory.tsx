@@ -8,6 +8,12 @@ import { Badge } from "@/components/ui/badge";
 import { useState } from "react";
 import { Search } from "lucide-react";
 
+function formatBytes(n: number): string {
+  if (n >= 1024 * 1024) return `${(n / 1024 / 1024).toFixed(1)} MB`;
+  if (n >= 1024) return `${(n / 1024).toFixed(0)} KB`;
+  return `${n} B`;
+}
+
 type MemResult = {
   uri?: string;
   abstract?: string;
@@ -21,6 +27,10 @@ export default function Memory() {
   const [submitted, setSubmitted] = useState("");
 
   const { data: status } = trpc.memory.status.useQuery(
+    { workspaceId: wsId! },
+    { enabled: !!wsId },
+  );
+  const { data: stats } = trpc.memory.stats.useQuery(
     { workspaceId: wsId! },
     { enabled: !!wsId },
   );
@@ -45,6 +55,35 @@ export default function Memory() {
         Semantic search over the workspace memory: the Slack archive, extracted knowledge,
         and agents' experience. Agents run the same search via MCP.
       </p>
+
+      {stats && (
+        <div className="grid grid-cols-3 gap-3">
+          <Card>
+            <CardContent className="pt-6">
+              <div className="text-2xl font-semibold">{stats.channels.length}</div>
+              <div className="text-xs text-muted-foreground">channels archived</div>
+            </CardContent>
+          </Card>
+          <Card>
+            <CardContent className="pt-6">
+              <div className="text-2xl font-semibold">{stats.totalFiles}</div>
+              <div className="text-xs text-muted-foreground">
+                archive documents · {formatBytes(stats.totalBytes)}
+              </div>
+            </CardContent>
+          </Card>
+          <Card>
+            <CardContent className="pt-6">
+              <div className="text-2xl font-semibold">
+                {stats.sharedFiles?.count ?? 0}
+              </div>
+              <div className="text-xs text-muted-foreground">
+                shared files · {formatBytes(stats.sharedFiles?.bytes ?? 0)}
+              </div>
+            </CardContent>
+          </Card>
+        </div>
+      )}
 
       <form
         className="flex gap-3"
