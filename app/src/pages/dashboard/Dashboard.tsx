@@ -204,6 +204,21 @@ export default function Dashboard() {
                           #{c.name}
                         </Badge>
                       ))}
+                      {/* Permissions are granted at install time, so a new
+                          scope needs this door to stay open after the first
+                          connection. */}
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="h-6 px-2 text-xs text-muted-foreground"
+                        disabled={connectSlack.isPending || !sel.selected}
+                        onClick={() =>
+                          sel.selected &&
+                          connectSlack.mutate({ workspaceId: sel.selected.id })
+                        }
+                      >
+                        {connectSlack.isPending ? "Redirecting…" : "Reinstall"}
+                      </Button>
                     </div>
                   ) : (
                     <>
