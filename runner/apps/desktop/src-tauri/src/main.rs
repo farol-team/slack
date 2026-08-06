@@ -1,3 +1,3 @@
 fn main() {
-    farol_runner_desktop::run()
+    opentag_runner_desktop::run()
 }

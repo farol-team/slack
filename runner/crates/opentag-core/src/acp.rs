@@ -214,7 +214,7 @@ impl AcpClient {
             json!({
                 "protocolVersion": 1,
                 "clientCapabilities": { "fs": { "readTextFile": false, "writeTextFile": false } },
-                "clientInfo": { "name": "farol-runner", "version": env!("CARGO_PKG_VERSION") }
+                "clientInfo": { "name": "opentag-runner", "version": env!("CARGO_PKG_VERSION") }
             }),
         )
         .await?;

@@ -1,6 +1,6 @@
 //! Where an agent works on this machine.
 //!
-//! The root is `~/Farol`: where an agent spends its days is work, and work
+//! The root is `~/OpenTag`: where an agent spends its days is work, and work
 //! belongs in the open — visible in Finder, not buried in app-data like a
 //! cache. It stays out of `~/Documents` on purpose too: iCloud evicts files
 //! there, and an evicted file mid-turn is a corrupted working tree.
@@ -37,12 +37,12 @@ pub fn derive_path(root: &Path, workspace: &str, channel: &str) -> PathBuf {
     root.join(slugify(workspace)).join(slugify(channel))
 }
 
-/// The default root, `~/Farol`, or a relative fallback when there is no home
+/// The default root, `~/OpenTag`, or a relative fallback when there is no home
 /// directory to speak of (a container, a daemon with no HOME).
 pub fn default_root() -> PathBuf {
     match std::env::var_os("HOME") {
-        Some(home) if !home.is_empty() => PathBuf::from(home).join("Farol"),
-        _ => PathBuf::from("Farol"),
+        Some(home) if !home.is_empty() => PathBuf::from(home).join("OpenTag"),
+        _ => PathBuf::from("OpenTag"),
     }
 }
 
