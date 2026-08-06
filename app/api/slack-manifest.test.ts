@@ -508,6 +508,45 @@ describe("the OpenTag rename", () => {
     );
   });
 
+  it("[S11] leaves the live Yandex Cloud resource names in the runbook", () => {
+    // A brand sweep renames copy. These are not copy: they are the names of
+    // resources that exist right now and that this change does not touch —
+    // the ids beside them are unchanged, which is the proof. Renaming them in
+    // the runbook makes it describe infrastructure that does not exist, and
+    // an operator following it connects to a database that is not there. The
+    // OpenViking bind is the sharp one: a redeploy against the wrong path
+    // mounts an empty directory and drops every team's memory, the incident
+    // the same file records as fixed on 2026-08-05.
+    const deploy = read("docs/deploy.md");
+    const lines = deploy.split("\n");
+    const live: [string, RegExp][] = [
+      ["d5dlva46uvlltllf4u4h", /`f[a]rol`/], // API Gateway
+      ["bba36ne3gvlk1qu5qki2", /f[a]rol-app/], // Serverless Container
+      ["crpvie6a47kkgl03v9fm", /`f[a]rol`/], // Container Registry
+      ["c9qe8tqpdv4s5n4lmrvf", /f[a]rol_production/], // PostgreSQL database
+      ["fhmg7l4iie50a930hs9m", /f[a]rol-cloud/], // cloud VM
+    ];
+    for (const [id, name] of live) {
+      const documented = lines.filter(l => l.includes(id));
+      expect(
+        documented.length,
+        `docs/deploy.md must document ${id}`
+      ).toBeGreaterThan(0);
+      expect(
+        documented.some(l => name.test(l)),
+        `${id} must be documented next to its real name ${name}`
+      ).toBe(true);
+    }
+
+    // The image repositories the redeploy recipes push to and pull from.
+    expect(deploy).toMatch(/crpvie6a47kkgl03v9fm\/f[a]rol-app:/);
+    expect(deploy).toMatch(/crpvie6a47kkgl03v9fm\/f[a]rol-cloud:/);
+
+    // The bind holding OpenViking's store on the VM, and no invented one.
+    expect(deploy).toMatch(/\/var\/lib\/f[a]rol\/ovdata/);
+    expect(deploy).not.toContain("/var/lib/opentag/ovdata");
+  });
+
   it("[S7] leaves the farol-team/agent-flow kit references untouched", () => {
     // The kit is a different repository; renaming this product does not
     // rename it, and a sweep that catches these files has gone too far.
