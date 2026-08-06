@@ -231,8 +231,21 @@ class SlackRenderer:
         key = str(turn.turn_id)
         async with self._locks[key]:
             self._status.pop(key, None)
-            if key in self._stream_ts and self._buffer[key]:
+            ts = self._stream_ts.get(key)
+            if ts is None:
+                return
+            if self._buffer[key]:
                 await self._render(turn, key, force=True)
+                return
+            # The turn said nothing — cancelled, failed, or an agent that only
+            # used tools. Its message exists solely because a step was showing,
+            # and a step left behind reads as work still in progress.
+            try:
+                client = await self.client_for(turn.slack_team)
+                await client.chat_delete(channel=turn.slack_channel, ts=ts)
+            except Exception:
+                log.exception("could not remove the empty status message")
+            self._stream_ts.pop(key, None)
 
     async def post_status(self, turn: Turn, text: str) -> None:
         client = await self.client_for(turn.slack_team)

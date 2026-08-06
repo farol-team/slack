@@ -186,6 +186,16 @@ class OpenVikingClient:
             headers=self._tenant(account_id, user_id),
         )
         res.raise_for_status()
-        data = res.json()
-        return data.get("results") or data.get("result") or []
+        found = res.json().get("result") or {}
+        if isinstance(found, list):        # older shape, kept for safety
+            return found
+        # OpenViking answers with an envelope — {memories, resources, skills,
+        # total} — and the callers of this want hits. Returning the envelope
+        # made the dashboard render nothing at all: it maps over an array, and
+        # an object has no `.map` and no `.length` to report emptiness with.
+        hits: list[dict] = []
+        for bucket in ("resources", "memories", "skills"):
+            hits.extend(found.get(bucket) or [])
+        hits.sort(key=lambda h: h.get("score") or 0, reverse=True)
+        return hits
 
