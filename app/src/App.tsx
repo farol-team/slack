@@ -7,6 +7,7 @@ import DashboardLayout from "./pages/dashboard/DashboardLayout"
 import Dashboard from "./pages/dashboard/Dashboard"
 import Runners from "./pages/dashboard/Runners"
 import Memory from "./pages/dashboard/Memory"
+import Turns from "./pages/dashboard/Turns"
 import Settings from "./pages/dashboard/Settings"
 
 export default function App() {
@@ -19,6 +20,7 @@ export default function App() {
         <Route index element={<Dashboard />} />
         <Route path="runners" element={<Runners />} />
         <Route path="memory" element={<Memory />} />
+        <Route path="activity" element={<Turns />} />
         <Route path="settings" element={<Settings />} />
       </Route>
       <Route path="*" element={<NotFound />} />

@@ -21,7 +21,6 @@ import {
   Circle,
   Download,
   Database,
-  MessageSquare,
 } from "lucide-react";
 
 const RELEASE_BASE =
@@ -105,7 +104,7 @@ export default function Dashboard() {
         r.lastSeenAt &&
         now - new Date(r.lastSeenAt).getTime() < ONLINE_WINDOW_MS,
     );
-  const firstTurnDone = (overview?.recentTurns.length ?? 0) > 0;
+  const firstTurnDone = !!overview?.hasTurns;
 
   const channelName = (id: string) =>
     overview?.channels.find((c) => c.slackChannelId === id)?.name ?? id;
@@ -432,31 +431,6 @@ export default function Dashboard() {
             </Card>
           )}
 
-          {/* ---------- Recent turns ---------- */}
-          {overview && overview.recentTurns.length > 0 && (
-            <Card>
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2">
-                  <MessageSquare className="h-5 w-5" /> Recent turns
-                </CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-2">
-                {overview.recentTurns.map((t) => (
-                  <div
-                    key={t.id}
-                    className="flex justify-between text-sm border-b last:border-0 pb-2"
-                  >
-                    <span className="truncate max-w-md">{t.prompt}</span>
-                    <Badge
-                      variant={t.status === "done" ? "default" : "secondary"}
-                    >
-                      {t.status}
-                    </Badge>
-                  </div>
-                ))}
-              </CardContent>
-            </Card>
-          )}
         </>
       )}
     </div>

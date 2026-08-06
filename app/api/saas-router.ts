@@ -105,17 +105,61 @@ export const workspaceRouter = createRouter({
         .select()
         .from(channels)
         .where(eq(channels.workspaceId, ws.id));
-      const recentTurns = await db
-        .select()
+      // The onboarding checklist only asks "has this workspace ever run a
+      // turn" — one row answers it; the log itself lives on its own page.
+      const [firstTurn] = await db
+        .select({ id: turns.id })
         .from(turns)
         .where(eq(turns.workspaceId, ws.id))
-        .orderBy(desc(turns.createdAt))
-        .limit(10);
+        .limit(1);
       return {
         workspace: { ...ws, slackTeamName },
         runners: runnerList,
         channels: channelList,
-        recentTurns,
+        hasTurns: !!firstTurn,
+      };
+    }),
+
+  /** The activity log: every turn this workspace ran, newest first.
+   *  Lives on its own page — an overview that scrolls is not an overview,
+   *  and this list is read when something went wrong or someone asks what
+   *  the agent did, not on the way past. */
+  turns: authedQuery
+    .input(
+      z.object({
+        workspaceId: z.number(),
+        limit: z.number().min(1).max(100).default(50),
+        offset: z.number().min(0).default(0),
+      }),
+    )
+    .query(async ({ ctx, input }) => {
+      await requireMembership(input.workspaceId, ctx.user.id);
+      const db = getDb();
+      const rows = await db
+        .select({
+          id: turns.id,
+          turnUuid: turns.turnUuid,
+          prompt: turns.prompt,
+          status: turns.status,
+          error: turns.error,
+          createdAt: turns.createdAt,
+          finishedAt: turns.finishedAt,
+          slackChannelId: chats.slackChannelId,
+          threadTs: chats.threadTs,
+          runnerLabel: runners.label,
+        })
+        .from(turns)
+        .leftJoin(chats, eq(turns.chatId, chats.id))
+        .leftJoin(runners, eq(turns.runnerId, runners.id))
+        .where(eq(turns.workspaceId, input.workspaceId))
+        .orderBy(desc(turns.createdAt))
+        // One row past the page tells the caller there is a next one without
+        // a second COUNT query over a table that only grows.
+        .limit(input.limit + 1)
+        .offset(input.offset);
+      return {
+        turns: rows.slice(0, input.limit),
+        hasMore: rows.length > input.limit,
       };
     }),
 });

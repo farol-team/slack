@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/button";
 import { useState } from "react";
 import {
   Brain, LayoutDashboard, TerminalSquare, Database, Settings, LogOut,
+  MessageSquare,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -12,6 +13,7 @@ const menu = [
   { to: "/dashboard", label: "Overview", icon: LayoutDashboard, end: true },
   { to: "/dashboard/runners", label: "Runners", icon: TerminalSquare },
   { to: "/dashboard/memory", label: "Memory", icon: Database },
+  { to: "/dashboard/activity", label: "Activity", icon: MessageSquare },
   { to: "/dashboard/settings", label: "Settings", icon: Settings },
 ];
 
