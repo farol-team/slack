@@ -1,6 +1,6 @@
 """Cloud-side mirror of runner protocol.rs.
 
-Every frame on wss://hooks.opentag.farol.team/runner/v1 is a `type`-tagged
+Every frame on wss://opentag-hooks.farol.team/runner/v1 is a `type`-tagged
 envelope. Field names match the Rust serde representation exactly
 (snake_case tags, camelCase-free) so the runner and cloud stay in sync.
 """

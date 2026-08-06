@@ -1,4 +1,4 @@
-"""The hooks surface — everything served publicly on hooks.opentag.farol.team.
+"""The hooks surface — everything served publicly on opentag-hooks.farol.team.
 
 These endpoints authenticate by request content (Slack signatures,
 signed memory tokens), so they must be reached directly (caddy on the
