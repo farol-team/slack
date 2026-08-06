@@ -71,8 +71,9 @@ class Turn:
     # the gateway, so Slack's private URLs and the bot token stay here.
     attachments: list = field(default_factory=list)
     status: str = "running"
-    # permission_id -> slack message ts (to update the buttons)
-    permission_msgs: dict[str, str] = field(default_factory=dict)
+    # permission_id -> (slack message ts, what was asked). The text is
+    # kept so the buttons can be replaced by their outcome later.
+    permission_msgs: dict[str, tuple[str, str]] = field(default_factory=dict)
 
     # The renderer and button handlers address tasks by their Slack
     # coordinates — proxy them from the chat.
@@ -155,6 +156,8 @@ class ChatRouter:
                 if slack is not None:
                     try:
                         await slack.flush(turn)
+                        await self._close_pending_permissions(
+                            turn, slack, "the runner disconnected")
                         await slack.post_status(
                             turn, ":warning: Runner disconnected — the task "
                                   "was interrupted. Reply in this thread to "
@@ -278,7 +281,7 @@ class ChatRouter:
         elif ev.kind == p.TurnEventKind.permission_request:
             ts = await slack.post_permission_request(turn, ev.permission_id, ev.text)
             if ev.permission_id and ts:
-                turn.permission_msgs[ev.permission_id] = ts
+                turn.permission_msgs[ev.permission_id] = (ts, ev.text)
         elif ev.kind == p.TurnEventKind.error:
             await slack.post_status(turn, f":warning: {ev.text}")
 
@@ -300,18 +303,59 @@ class ChatRouter:
             **({"acpSessionId": res.session_id} if res.session_id else {}),
             **({"error": res.error} if res.error else {}),
         })
+        await self._close_pending_permissions(turn, slack, "the turn finished")
         await slack.post_result(turn, res)
         slack.cleanup(turn)
 
-    async def decide_permission(self, permission_id: str, approved: bool) -> None:
-        """Slack button -> runner. Locate the turn that owns this permission."""
-        for turn in self.turns.values():
-            if permission_id in turn.permission_msgs:
-                await turn.runner.ws.send_text(encode(p.PermissionDecision(
-                    turn_id=turn.turn_id, permission_id=permission_id, approved=approved)))
-                del turn.permission_msgs[permission_id]
-                return
-        log.warning("permission %s not found", permission_id)
+    async def _close_pending_permissions(self, turn: Turn, slack, why: str) -> None:
+        """A turn can end while its buttons are still on screen — the agent
+        answered its own question, the runner timed it out, or the machine
+        went away. Whatever the reason, the thread should stop offering a
+        choice nobody will read."""
+        if slack is None:
+            return
+        for permission_id, (ts, description) in list(turn.permission_msgs.items()):
+            try:
+                await slack.close_permission(
+                    turn, ts, description, f":grey_question: No longer waiting — {why}")
+            except Exception:
+                log.exception("could not close permission %s", permission_id)
+        turn.permission_msgs.clear()
+
+    async def decide_permission(self, value: str, approved: bool,
+                                decided_by: str = "", slack=None) -> bool:
+        """Slack button -> runner. `value` is `<turn_id>:<permission_id>`: the
+        permission id alone is the agent's JSON-RPC counter, which restarts at
+        0 in every agent process, so a click in one thread could answer a
+        request in another. Returns False when nothing is waiting any more —
+        the turn ended, was cancelled, or the request already timed out."""
+        turn_part, _, permission_id = value.rpartition(":")
+        turn = None
+        if turn_part:
+            try:
+                turn = self.turns.get(UUID(turn_part))
+            except ValueError:
+                turn = None
+        else:
+            # A button posted before this format existed. Best effort, and the
+            # old ambiguity with it.
+            permission_id = value
+            turn = next((t for t in self.turns.values()
+                         if permission_id in t.permission_msgs), None)
+
+        if turn is None or permission_id not in turn.permission_msgs:
+            log.info("permission %s no longer waiting", value)
+            return False
+
+        await turn.runner.ws.send_text(encode(p.PermissionDecision(
+            turn_id=turn.turn_id, permission_id=permission_id, approved=approved)))
+        ts, description = turn.permission_msgs.pop(permission_id)
+        if slack is not None:
+            who = f"<@{decided_by}>" if decided_by else "a teammate"
+            outcome = (f":white_check_mark: Approved by {who}" if approved
+                       else f":no_entry: Denied by {who}")
+            await slack.close_permission(turn, ts, description, outcome)
+        return True
 
     async def cancel_by_thread(self, channel: str, thread_ts: str) -> bool:
         chat = self.get_chat(channel, thread_ts)

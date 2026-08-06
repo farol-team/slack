@@ -8,7 +8,7 @@ use anyhow::{anyhow, Context, Result};
 use serde_json::{json, Value};
 use std::collections::HashMap;
 use std::process::Stdio;
-use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::Arc;
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 use tokio::process::{Child, ChildStdin, Command};
@@ -42,6 +42,11 @@ pub struct AcpClient {
     stdin: Arc<Mutex<ChildStdin>>,
     next_id: AtomicU64,
     pending: Arc<Mutex<HashMap<u64, oneshot::Sender<Result<Value, String>>>>>,
+    /// Raised while `session/load` is in flight. ACP requires the agent to
+    /// replay the entire conversation as ordinary `session/update`
+    /// notifications, so without this every resumed turn would repeat the
+    /// whole thread back into Slack before answering.
+    replaying: Arc<AtomicBool>,
 }
 
 impl AcpClient {
@@ -70,6 +75,8 @@ impl AcpClient {
         let pending: Arc<Mutex<HashMap<u64, oneshot::Sender<Result<Value, String>>>>> =
             Arc::new(Mutex::new(HashMap::new()));
         let pending_reader = pending.clone();
+        let replaying = Arc::new(AtomicBool::new(false));
+        let replaying_reader = replaying.clone();
 
         // Read loop: dispatch responses by id, forward notifications as events.
         tokio::spawn(async move {
@@ -97,6 +104,11 @@ impl AcpClient {
                         }
                     }
                 } else if msg.get("method").and_then(Value::as_str) == Some("session/update") {
+                    // History being replayed for session/load is not news:
+                    // the thread already shows it.
+                    if replaying_reader.load(Ordering::SeqCst) {
+                        continue;
+                    }
                     let params = msg.get("params").cloned().unwrap_or(Value::Null);
                     if let Some(ev) = map_session_update(&params) {
                         let _ = events.send(ev).await;
@@ -110,6 +122,7 @@ impl AcpClient {
             stdin: Arc::new(Mutex::new(stdin)),
             next_id: AtomicU64::new(1),
             pending,
+            replaying,
         })
     }
 
@@ -221,12 +234,19 @@ impl AcpClient {
             .ok_or_else(|| anyhow!("no sessionId in response"))
     }
 
+    /// Resume a session the agent already has. Everything it says while this
+    /// call is in flight is the replay ACP mandates, not an answer — the flag
+    /// keeps that history out of the Slack thread it came from.
     pub async fn load_session(&self, session_id: &str, cwd: &str, mcp_servers: Value) -> Result<()> {
-        self.call(
-            "session/load",
-            json!({ "sessionId": session_id, "cwd": cwd, "mcpServers": mcp_servers }),
-        )
-        .await?;
+        self.replaying.store(true, Ordering::SeqCst);
+        let res = self
+            .call(
+                "session/load",
+                json!({ "sessionId": session_id, "cwd": cwd, "mcpServers": mcp_servers }),
+            )
+            .await;
+        self.replaying.store(false, Ordering::SeqCst);
+        res?;
         Ok(())
     }
 

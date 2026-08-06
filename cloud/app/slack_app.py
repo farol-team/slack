@@ -210,16 +210,21 @@ class SlackRenderer:
 
     async def post_permission_request(self, turn: Turn, permission_id: Optional[str],
                                       description: str) -> Optional[str]:
+        # The button carries the turn as well as the request: a permission id
+        # is the agent's JSON-RPC counter, which restarts at 0 in every agent
+        # process, so on its own it would answer whichever thread happened to
+        # be found first.
+        value = f"{turn.turn_id}:{permission_id or ''}"
         blocks = [
             {"type": "section", "text": {"type": "mrkdwn",
              "text": f":lock: Agent requests permission:\n*{description}*"}},
             {"type": "actions", "block_id": f"perm_{permission_id}", "elements": [
                 {"type": "button", "text": {"type": "plain_text", "text": "Approve"},
                  "style": "primary", "action_id": "perm_approve",
-                 "value": permission_id or ""},
+                 "value": value},
                 {"type": "button", "text": {"type": "plain_text", "text": "Deny"},
                  "style": "danger", "action_id": "perm_deny",
-                 "value": permission_id or ""},
+                 "value": value},
                 {"type": "button", "text": {"type": "plain_text", "text": "Stop task"},
                  "action_id": "task_stop", "value": str(turn.turn_id)},
             ]},
@@ -230,6 +235,35 @@ class SlackRenderer:
                                             text=f"Permission: {description}",
                                             blocks=blocks)
         return res.get("ts")
+
+    async def close_permission(self, turn: Turn, ts: str, description: str,
+                               outcome: str) -> None:
+        """Replace the buttons with what happened to them. A live button on a
+        request nobody is waiting for is worse than no button: it invites a
+        click that cannot land, and the thread never says so."""
+        try:
+            client = await self.client_for(turn.slack_team)
+            await client.chat_update(
+                channel=turn.slack_channel, ts=ts,
+                text=f"{outcome} — {description}",
+                blocks=[{"type": "section", "text": {"type": "mrkdwn",
+                         "text": f"{outcome}\n*{description}*"}}],
+            )
+        except Exception:
+            log.exception("could not close permission message %s", ts)
+
+    async def post_stale_click(self, team_id: str, channel: str,
+                               thread_ts: str, user_id: str) -> None:
+        """Answer a click on a request that is no longer waiting. Ephemeral:
+        it is feedback for the person who clicked, not thread noise."""
+        try:
+            client = await self.client_for(team_id)
+            await client.chat_postEphemeral(
+                channel=channel, user=user_id, thread_ts=thread_ts,
+                text="That request is no longer waiting for an answer — the "
+                     "turn finished, was cancelled, or timed out.")
+        except Exception:
+            log.exception("could not answer a stale permission click")
 
     def cleanup(self, turn: Turn) -> None:
         """Drop per-turn streaming state once the turn is finished."""
@@ -591,15 +625,29 @@ def register_handlers(app: AsyncApp, renderer: SlackRenderer,
         ok = await ingestion.ov.delete_uri(account, uri)
         log.info("file_deleted: %s removed=%s", uri, ok)
 
+    async def decide(body, action, approved: bool) -> None:
+        ok = await router.decide_permission(
+            action["value"], approved=approved,
+            decided_by=body["user"]["id"], slack=renderer)
+        if ok:
+            return
+        # Nothing is waiting for this click. Say so where it was clicked —
+        # the alternative is a button that swallows presses in silence.
+        message = body.get("message") or {}
+        await renderer.post_stale_click(
+            body["team"]["id"], body["channel"]["id"],
+            message.get("thread_ts") or message.get("ts", ""),
+            body["user"]["id"])
+
     @app.action("perm_approve")
-    async def approve(ack, action):
+    async def approve(ack, body, action):
         await ack()
-        await router.decide_permission(action["value"], approved=True)
+        await decide(body, action, approved=True)
 
     @app.action("perm_deny")
-    async def deny(ack, action):
+    async def deny(ack, body, action):
         await ack()
-        await router.decide_permission(action["value"], approved=False)
+        await decide(body, action, approved=False)
 
     @app.action("task_stop")
     async def stop(ack, body, action):
