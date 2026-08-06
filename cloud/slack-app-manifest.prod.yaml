@@ -1,8 +1,15 @@
 # Slack App Manifest for Farol — production (app id A0BP0QCBCMN).
+#
 # Events go DIRECTLY to the cloud VM (hooks.farol.team, caddy TLS): the
 # Yandex API Gateway strips Slack signature headers, so events cannot
 # pass through app.farol.team. OAuth redirects are browser redirects
 # (query params) and stay on the SaaS domain.
+#
+# Applying this REPLACES the whole app configuration — anything set by hand in
+# api.slack.com and missing here is removed. Keep `oauth_config.scopes.bot` in
+# lockstep with `SLACK_SCOPES` in app/api/slack-oauth.ts (a test enforces it),
+# and remember that widening scopes does not reach installed workspaces: Slack
+# grants scopes at install time, so each workspace must reinstall.
 display_information:
   name: Farol
   description: Slack ↔ your local AI agents, with team memory
@@ -20,26 +27,41 @@ oauth_config:
     - https://app.farol.team/api/slack/callback
     - https://app.farol.team/api/oauth/callback
   scopes:
+    # "Sign in with Slack" (OIDC) — the dashboard login.
     user:
       - openid
       - profile
       - email
     bot:
       - app_mentions:read
-      - channels:read
       - channels:history
+      - channels:join     # the dashboard adds the bot without an /invite
+      - channels:read
       - chat:write
-      - groups:read
+      - files:read        # screenshots and logs attached to the question
       - groups:history
-      - users:read
+      - groups:read
+      - im:history        # a DM to the bot is a task, no mention needed
+      - im:read
+      - im:write
+      - reactions:write   # 👀 while the runner works, ✅ when it lands
+      - users:read        # resolve the mention author -> member (BYOA routing)
       - users:read.email
 settings:
+  # Approve/Deny/Stop are buttons: without this, Slack delivers the click
+  # nowhere and the agent waits for an answer that cannot arrive. Bolt takes
+  # interactions on the same endpoint as events.
+  interactivity:
+    is_enabled: true
+    request_url: https://hooks.farol.team/slack/events
   event_subscriptions:
     request_url: https://hooks.farol.team/slack/events
     bot_events:
       - app_mention
       - message.channels
-      - message.groups
+      - message.groups    # private channels are archived too
+      - message.im
+      - file_deleted      # deleting in Slack removes the copy in memory
   org_deploy_enabled: false
   socket_mode_enabled: false
   token_rotation_enabled: false
