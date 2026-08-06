@@ -112,7 +112,59 @@ does not cover that); a gVisor Sentry escape actually lands; or a workload needs
 kernel features gVisor doesn't emulate (the reason Google itself moved Cloud Run
 gen2 off gVisor).
 
-## 4. What to do next
+## 4. The other boundary — the agent's own OS sandbox
+
+Everything above is one boundary: a container around the agent, protecting **our
+host from the agent**. There is a second, orthogonal one — the agent's **own OS
+sandbox**, protecting **the machine it runs on from the agent** — and it answers
+a different threat with a different mechanism. Naming both keeps the design
+honest.
+
+The mechanism is OS-level: seccomp + Landlock on Linux, Seatbelt
+(`sandbox-exec`) on macOS. Codex ships it as `--sandbox` modes (read-only /
+workspace-write / danger-full-access); Claude Code exposes a `sandbox` block in
+settings (network allowlist, filesystem allow/deny, seccomp); Anthropic
+open-sourced the underlying `sandbox-runtime` (bubblewrap / Seatbelt) in
+Nov 2025.
+
+**Why it is worth having, in one sentence:** today "everything is allowed inside
+a turn" rests on *our* code — `auto_allowed` in `session.rs` waves read-only and
+memory tools through, and the Slack Approve/Deny buttons gate the rest. That is
+an assertion we make. Run the adapter under its own OS sandbox and the same
+claim becomes one the **harness enforces in the kernel** — a policy someone
+other than us checks, that the model cannot talk its way past. It also buys
+autonomy: the point of Codex's `workspace-write` is that the agent runs commands
+*without asking*, because the sandbox, not a human, is what stops damage. Fewer
+buttons for the developer, and a stronger guarantee behind them.
+
+**Where it fits — and where it does not.** An OS sandbox is the **same kernel**.
+It confines files and network; it does **not** defend against a kernel exploit —
+Anthropic's own `sandbox-runtime` README says bubblewrap/Seatbelt "do not
+provide meaningful protection against kernel exploits". So:
+
+- **BYOA, on the developer's laptop** — this is the right tool, and it *replaces*
+  our coarse buttons with fine-grained, enforced policy. The code there is
+  semi-trusted (their repo, their machine); the threat is "the agent did
+  something dumb or was prompt-injected", which is exactly what seccomp/Seatbelt
+  stop. No container is available or wanted on someone's laptop; the agent's own
+  sandbox is the whole boundary.
+- **Hosted client agents** — here it is a layer *inside* the container, not the
+  boundary. The code is hostile by definition and the threat includes kernel
+  escape, which only gVisor/microVM stop. The OS sandbox *composes* with them:
+  agent under its `--sandbox` (what the agent may touch) inside gVisor (what the
+  container may reach the kernel for) behind an egress proxy (what leaves the
+  box). Three layers, each catching a different class of miss.
+
+**So the tiers in §3 are not the whole picture — they are the outer boundary.**
+The agent's OS sandbox is a second, cheaper boundary that is the *primary* one in
+BYOA and a *reinforcing* one when hosted. For BYOA specifically the right first
+step is not a container at all: it is to stop relying solely on `auto_allowed`
+and run the adapter under its native sandbox mode, passing it our policy (the
+allowed directory, the egress allowlist). Whether `claude-agent-acp` can enable
+that mode and accept our policy through ACP is the open question — not yet
+checked.
+
+## 5. What to do next
 
 1. **Benchmark the real agent, not a probe.** These numbers are proxies; run an
    actual multi-file task under runsc and confirm the per-turn (not setup) hit is
