@@ -71,6 +71,54 @@ Distribution risk: Tag ships "included" for Anthropic Enterprise/Team subscriber
 friction for teams already on Claude. Our pitch must center on what Tag cannot offer: code stays
 local, bring your own agent, explicit approval of destructive actions.
 
+## Execution architecture
+
+Anthropic documents Tag's execution model in the official docs and two engineering posts.
+
+**Sandbox per Slack thread.** Each thread gets its own ephemeral sandbox on Anthropic's
+infrastructure ("nothing installed in your network"). Two threads in one channel are two isolated
+sessions with no shared state. Lifecycle: mention → sandbox builds → working loop (live checklist
+edited in place) → result posts to the thread → on idle the sandbox is **discarded while the
+thread persists**; a new reply rebuilds it. Files that existed only in the sandbox are lost —
+docs advise asking Claude to push branches/drafts as it goes. Inside runs "the same engine that
+powers Claude Code on the web": repos are cloned into the sandbox, changes pushed back as a
+branch/PR authored by the Claude GitHub App.
+
+**Brain decoupled from hands** ([Managed Agents](https://www.anthropic.com/engineering/managed-agents)):
+the agent loop (Claude + harness) is a stateless process *outside* the container, reading events
+from a durable session log and calling containers as tools (`execute(name, input) → string`).
+Containers are cattle — if one dies the harness provisions a fresh one. This is what makes the
+"quiet period" cheap: session state doesn't live in the sandbox. Reported effect: p50
+time-to-first-token −60%.
+
+**Credentials never enter the sandbox**
+([agent identity](https://claude.com/docs/claude-tag/concepts/agent-identity.md)): all sandbox
+egress crosses **Agent Proxy**, a network boundary that checks the destination against three
+allow layers (connection's allowed websites → bundle's Domains list → environment's network
+level) and injects the credential from the credential store *at the boundary*. The model and the
+sandbox never see keys; once saved, a credential is never displayed again. Anything not allowed
+is blocked, including `curl`/`fetch` from code Claude runs. Limitation: the proxy carries
+**HTTP/HTTPS only** — no SSH, no native database wire protocols.
+
+**Isolation technology**: not named for Tag specifically, but
+[How we contain Claude](https://www.anthropic.com/engineering/how-we-contain-claude) describes the
+family: claude.ai code execution runs in **gVisor** containers on isolated infrastructure; Claude
+Code locally uses Seatbelt (macOS) / bubblewrap (Linux); Cowork uses a full VM. Tag, sharing the
+Claude Code on the web engine, is almost certainly in the gVisor branch.
+
+**Takeaways for Farol:**
+
+1. Their Agent Proxy is our `gateway.py` pattern taken to the whole network: we proxy only memory
+   (OV MCP + scoped tokens), they proxy all egress with credential injection at the boundary.
+   Validates our "the agent never sees keys" choice.
+2. gVisor is the same runtime we measured in `spikes/2026-08-06-secure-sandbox.md` (+60–80%
+   overhead): Anthropic runs it in production at scale — an argument in favor in our isolation
+   cost debate.
+3. Our differentiator holds, with a caveat: HTTP-only proxy and no SSH/DB wire protocols are real
+   Tag limitations vs our local runner with full machine access. But the Managed Agents post
+   explicitly mentions VPC integration — "customers can provision their own hands." If that
+   reaches Tag, "code never leaves your perimeter" stops being ours alone.
+
 ## Pricing
 
 **Cost at a glance:**
@@ -114,6 +162,10 @@ effectively a subscription gate plus usage-based billing, softened during beta b
 ## Sources
 
 - https://claude.com/product/tag (official product page)
+- https://claude.com/docs/claude-tag/concepts/how-it-works.md (session/sandbox lifecycle)
+- https://claude.com/docs/claude-tag/concepts/agent-identity.md (Agent Proxy, credential store)
+- https://www.anthropic.com/engineering/managed-agents (brain/hands decoupling)
+- https://www.anthropic.com/engineering/how-we-contain-claude (isolation tech per product)
 - https://www.digitalapplied.com/blog/anthropic-claude-tag-slack-team-collaboration-2026
 - https://ofox.ai/blog/claude-tag-slack-setup-guide-2026/
 - https://fortune.com/2026/06/23/anthropic-claude-tag-virtual-employee-tool-slack/
