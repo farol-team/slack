@@ -144,11 +144,30 @@ const KEPT_HOSTS = new Set([
  */
 const KEPT_IDENTIFIER = "team.farol.opentag";
 
+/**
+ * Names of live Yandex Cloud resources, spelled out one by one rather than
+ * matched by shape. They survive only in the deploy runbook, and only because
+ * the resources themselves are not renamed here — [S11] holds each of them to
+ * the id documented beside it, so this list cannot quietly bless a leftover.
+ */
+const KEPT_INFRA_FILE = "docs/deploy.md";
+const KEPT_INFRA = [
+  /`f[a]rol`/g,
+  /f[a]rol-app/g,
+  /f[a]rol-cloud/g,
+  /f[a]rol_production/g,
+  /\/var\/lib\/f[a]rol\/ovdata/g,
+];
+
 /** Remove every form of the old name the rename keeps, so that whatever
- *  survives is a leftover. */
+ *  survives is a leftover. A grep hit is `path:line:text`, so the path the
+ *  hit came from decides whether the infrastructure names apply. */
 function stripKeptNames(line: string): string {
+  const infra = line.startsWith(`${KEPT_INFRA_FILE}:`)
+    ? KEPT_INFRA.reduce((acc, name) => acc.replace(name, ""), line)
+    : line;
   return (
-    line
+    infra
       // the GitHub org path, which is not moving
       .replace(/f[a]rol-team/gi, "")
       // the kept reverse-DNS identifier, and only it
