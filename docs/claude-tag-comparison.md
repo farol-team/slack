@@ -73,7 +73,20 @@ local, bring your own agent, explicit approval of destructive actions.
 
 ## Pricing
 
-Per official Anthropic docs ([overview](https://claude.com/docs/claude-tag/overview.md),
+**Cost at a glance:**
+
+1. **Subscription (entry ticket):** Team at $20–25/seat/month or Enterprise (custom pricing).
+   Without one of these plans Tag is unavailable entirely.
+2. **Usage on top:** channel work is metered against a prepaid organization balance; no published
+   per-token or per-task rate — admins set a monthly spend cap and watch per-channel breakdown.
+   DMs with Claude cost the org nothing (they draw from the sender's personal seat limits).
+3. **During beta (until 2026-09-01):** channel usage is effectively free thanks to launch
+   credits — $2,500 per Team org (min 10 paid seats), $25,000 per Enterprise org.
+
+For a ~10-person team on Team plan: roughly $200–250/month for seats, Tag consumption currently
+covered by credits, and an unknown usage bill after they expire (post-beta pricing unannounced).
+
+Details, per official Anthropic docs ([overview](https://claude.com/docs/claude-tag/overview.md),
 [spend limits](https://claude.com/docs/claude-tag/admins/set-spend-limit.md),
 [launch promo](https://support.claude.com/en/articles/15575654-claude-tag-launch-promo-for-claude-team-and-enterprise)):
 
