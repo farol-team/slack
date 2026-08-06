@@ -6,7 +6,7 @@ A more detailed guide lives in `AGENTS.md` — keep the two in sync when archite
 
 ## What this is
 
-Monorepo for "Farol": mentioning the bot in Slack creates a task that runs on a local coding agent on a developer's machine; team memory is stored in OpenViking.
+Monorepo for "OpenTag": mentioning the bot in Slack creates a task that runs on a local coding agent on a developer's machine; team memory is stored in OpenViking.
 
 ```
 Slack ──Events API──► cloud (Python/FastAPI) ──wss──► runner (Rust/Tauri)
@@ -18,13 +18,13 @@ Slack ──Events API──► cloud (Python/FastAPI) ──wss──► runner
 
 - **`app/`** — SaaS control plane: React 19 + Vite frontend, Hono + tRPC backend, PostgreSQL via Drizzle, Kimi OAuth. Stores workspaces, runners, channels, tasks, and Slack installations (bot tokens).
 - **`cloud/`** — data plane: receives Slack Events (Slack Bolt), holds the `/runner/v1` WebSocket for runners, routes tasks (`TaskRouter`, in-memory), streams events back to Slack threads, writes channel messages to OpenViking. Does **not** store bot tokens — resolves them per-team via `app/`'s tRPC `slack.installationByTeam` with the `x-internal-secret` header.
-- **`runner/`** — thin Rust client: Cargo workspace with `crates/farol-core` and a Tauri 2 tray app in `apps/desktop`. Outbound-only wss connection (zero open ports); runs tasks on a local agent over ACP (JSON-RPC 2.0 over stdio).
+- **`runner/`** — thin Rust client: Cargo workspace with `crates/opentag-core` and a Tauri 2 tray app in `apps/desktop`. Outbound-only wss connection (zero open ports); runs tasks on a local agent over ACP (JSON-RPC 2.0 over stdio).
 
 Memory model: Slack workspace = OpenViking account (tenant boundary); OV runs in trusted mode — only cloud/ talks to it, injecting `X-OpenViking-Account/User` headers. Channel messages are batched (50 msgs / 5 min) into `viking://resources/slack/{channel_id}/{date}.md`. Agents get memory only through the **gateway** (`cloud/app/gateway.py`, `/memory/mcp`): `AssignTurn.memory` carries its URL plus a signed task token scoped to the mention's channel; the gateway proxies native OV MCP tools and rejects URIs outside the scope. The OV account is provisioned on Slack install via `/internal/provision`.
 
 ## The protocol is a double mirror — change both sides
 
-`runner/crates/farol-core/src/protocol.rs` (serde, `#[serde(tag = "type", rename_all = "snake_case")]`) and `cloud/app/protocol.py` (pydantic) define the same cloud↔runner contract and must change in lockstep: tags and field names match 1-to-1 in snake_case. Messages: `hello`, `assign_turn`, `turn_event`, `permission_decision`, `cancel_turn`, `turn_result`, `ping`/`pong`, `error`.
+`runner/crates/opentag-core/src/protocol.rs` (serde, `#[serde(tag = "type", rename_all = "snake_case")]`) and `cloud/app/protocol.py` (pydantic) define the same cloud↔runner contract and must change in lockstep: tags and field names match 1-to-1 in snake_case. Messages: `hello`, `assign_turn`, `turn_event`, `permission_decision`, `cancel_turn`, `turn_result`, `ping`/`pong`, `error`.
 
 ## Commands
 
@@ -55,7 +55,7 @@ cd apps/desktop && npm install
 npm run dev                    # cargo tauri dev
 npm run build                  # cargo tauri build (.app + .dmg; macOS only for now)
 # headless runner for E2E dev (no Tauri UI):
-FAROL_RUNNER_TOKEN=frl_... cargo run -p farol-core --example headless
+OPENTAG_RUNNER_TOKEN=frl_... cargo run -p opentag-core --example headless
 ```
 
 Releasing the runner (tags, signing, auto-update) is `docs/release.md`; deploying the SaaS and cloud is `docs/deploy.md`.
@@ -71,7 +71,7 @@ Minimal pre-submit check: `npm run check` + `npm run lint` (app), `cargo check` 
 - **DB schema** (`app/db/schema.ts`): PostgreSQL (drizzle pg-core). PKs are `serial()`; FKs referencing serial PKs use `integer("col")`. Enums are declared with `pgEnum` at the top of the file.
 - **Key server files** (`app/api/`): `boot.ts` (Hono entry), `router.ts` (root tRPC router: `auth`, `workspace`, `runner`, `memory`, `billing`, `slack`), `saas-router.ts` (domain logic), `slack-oauth.ts` ("Add to Slack" OAuth v2).
 - **Key cloud files** (`cloud/app/`): `main.py` (FastAPI: `/runner/v1` WS, `/slack/events`, `/memory/mcp`, `/internal/*` behind `x-internal-secret`, `/healthz`), `slack_app.py` (mentions, follow-up turns, Approve/Deny/Stop buttons, IngestionBuffer), `chat_router.py` (ChatRouter: Chat = Slack thread owning the ACP session; Turn = one conversational turn; the wire protocol stays task-based (a wire task is one Turn)), `gateway.py`, `memory.py` (OpenViking HTTP client).
-- **Key runner files** (`runner/crates/farol-core/src/`): `protocol.rs`, `acp.rs` (ACP client), `cloud.rs` (WS loop with reconnect/backoff), `session.rs` (SessionManager), `config.rs` (config + OS keychain for token), `agents.rs` (pinned ACP adapters, PATH resolution), `workspace.rs` (`~/Farol/<workspace>/<channel>` derivation), `connect.rs` (browser handoff).
+- **Key runner files** (`runner/crates/opentag-core/src/`): `protocol.rs`, `acp.rs` (ACP client), `cloud.rs` (WS loop with reconnect/backoff), `session.rs` (SessionManager), `config.rs` (config + OS keychain for token), `agents.rs` (pinned ACP adapters, PATH resolution), `workspace.rs` (`~/OpenTag/<workspace>/<channel>` derivation), `connect.rs` (browser handoff).
 
 ## Testing
 
@@ -85,7 +85,7 @@ Tasks live in GitHub Issues of this repo, driven by the [farol-team/agent-flow](
 
 - Secrets only via env; `.env.example` files are the templates, real `.env` files are gitignored.
 - Runner tokens (random `frl_*`, issued by `runner.createToken`): DB stores only the SHA-256 hash (`runners.tokenHash`); client keeps the token in the OS keychain, not on disk. Validation goes through the SaaS (`runner.validate`) — there is no offline/legacy token format.
-- Runner enforces a directory allowlist: everything under `root_dir` (`~/Farol` by default, where `<workspace>/<channel>` dirs are derived), any channel `bindings`, and extra `allowed_cwds`. Nothing else is spawned in. Destructive agent actions require Approve/Deny buttons in Slack; memory calls and read-only tool kinds are auto-allowed by the runner (`session.rs::auto_allowed`).
+- Runner enforces a directory allowlist: everything under `root_dir` (`~/OpenTag` by default, where `<workspace>/<channel>` dirs are derived), any channel `bindings`, and extra `allowed_cwds`. Nothing else is spawned in. Destructive agent actions require Approve/Deny buttons in Slack; memory calls and read-only tool kinds are auto-allowed by the runner (`session.rs::auto_allowed`).
 - Slack OAuth state uses one-time tokens in `slack_oauth_states` (CSRF protection).
 
 ## Known MVP limitations

@@ -1,8 +1,8 @@
-# AGENTS.md — Farol
+# AGENTS.md — OpenTag
 
 ## Project overview
 
-Monorepo of three components that together form the "Farol"
+Monorepo of three components that together form the "OpenTag"
 service: mentioning the bot in Slack turns into a task executed by a local coding
 agent on a developer's machine, while team memory is stored in OpenViking.
 
@@ -23,7 +23,7 @@ agent on a developer's machine, while team memory is stored in OpenViking.
   (`TaskRouter`), streams events back to Slack, writes channel messages to OpenViking.
   The bot token is resolved per-team via `app/`'s tRPC API (`slack.installationByTeam`,
   `x-internal-secret` header); it does not store tokens itself.
-- **`runner/`** — thin Rust client: Cargo workspace with the `crates/farol-core`
+- **`runner/`** — thin Rust client: Cargo workspace with the `crates/opentag-core`
   core and a Tauri 2 desktop app in `apps/desktop`. Lives in the tray, holds an
   **outbound** wss connection to the cloud (zero open ports), executes tasks on a
   local agent via ACP (JSON-RPC 2.0 over stdio).
@@ -63,10 +63,10 @@ OpenViking MCP endpoint via `AssignTurn.memory`.
   `x-internal-secret`) — and `/healthz`.
 
 ### runner/ (Rust, edition 2021)
-- `crates/farol-core/src/` — `protocol.rs` (message contract, serde tagged union),
+- `crates/opentag-core/src/` — `protocol.rs` (message contract, serde tagged union),
   `acp.rs` (ACP client), `cloud.rs` (WS loop with reconnect/backoff), `session.rs`
   (SessionManager), `config.rs` (config + OS keychain for the token).
-- `crates/farol-core/examples/headless.rs` — headless runner without the Tauri UI
+- `crates/opentag-core/examples/headless.rs` — headless runner without the Tauri UI
   (dev debugging and E2E tests).
 - `apps/desktop/` — Tauri 2: `ui/index.html` (no bundler, withGlobalTauri),
   `src-tauri/` (tray, IPC commands, adapter install).
@@ -102,9 +102,9 @@ npm run dev                        # cargo tauri dev
 npm run build                      # cargo tauri build (.app + .dmg; macOS only for now)
 
 # headless runner without the Tauri UI (for dev/E2E):
-FAROL_RUNNER_TOKEN=frl_... cargo run -p farol-core --example headless
+OPENTAG_RUNNER_TOKEN=frl_... cargo run -p opentag-core --example headless
 ```
-The headless-mode token is taken from the `FAROL_RUNNER_TOKEN` env var, otherwise from
+The headless-mode token is taken from the `OPENTAG_RUNNER_TOKEN` env var, otherwise from
 the OS keychain; config is the standard `RunnerConfig::load()`.
 
 Requirements: Rust stable, Node 18+, Tauri 2 system dependencies.
@@ -121,7 +121,7 @@ Requirements: Rust stable, Node 18+, Tauri 2 system dependencies.
 - **DB schema** (`app/db/schema.ts`): PostgreSQL (drizzle pg-core). PKs are `serial()`;
   FKs referencing serial PKs use `integer("col")`. Enums — `pgEnum`, declared at the
   top of the file.
-- **Cloud ↔ runner protocol is a double mirror**: `runner/crates/farol-core/src/protocol.rs`
+- **Cloud ↔ runner protocol is a double mirror**: `runner/crates/opentag-core/src/protocol.rs`
   (serde, `#[serde(tag = "type", rename_all = "snake_case")]`) and
   `cloud/app/protocol.py` (pydantic) must change in lockstep; snake_case tags and
   field names match 1-to-1. The contract is verified by round-trip serialization.
@@ -167,7 +167,7 @@ Requirements: Rust stable, Node 18+, Tauri 2 system dependencies.
 - Slack bot tokens are stored in `slack_installations` (note in code: encrypt via KMS
   in production). Internal SaaS ↔ cloud calls are protected by the
   `x-internal-secret` header (`INTERNAL_API_SECRET`).
-- On the runner, the directory allowlist is `root_dir` (`~/Farol`, where `<workspace>/<channel>` folders are derived) plus channel `bindings` and extra `allowed_cwds`; destructive
+- On the runner, the directory allowlist is `root_dir` (`~/OpenTag`, where `<workspace>/<channel>` folders are derived) plus channel `bindings` and extra `allowed_cwds`; destructive
   agent actions are confirmed via Approve/Deny buttons in Slack.
 - Permission policy lives in `session.rs::auto_allowed`: memory calls (the
   `team-memory` MCP server) and read-only ACP tool kinds (`read`, `search`,
