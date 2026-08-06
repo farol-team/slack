@@ -18,38 +18,38 @@ import { resolve } from "node:path";
 const root = resolve(__dirname, "..", "..");
 const manifest = readFileSync(
   resolve(root, "cloud/slack-app-manifest.prod.yaml"),
-  "utf8",
+  "utf8"
 );
 const oauthSource = readFileSync(
   resolve(root, "app/api/slack-oauth.ts"),
-  "utf8",
+  "utf8"
 );
 
 /** Scopes the SaaS asks for at install time. */
 function requestedScopes(): string[] {
   const block = oauthSource.match(/SLACK_SCOPES = \[([\s\S]*?)\]\.join/);
   if (!block) throw new Error("SLACK_SCOPES not found in slack-oauth.ts");
-  return [...block[1].matchAll(/"([^"]+)"/g)].map((m) => m[1]);
+  return [...block[1].matchAll(/"([^"]+)"/g)].map(m => m[1]);
 }
 
 /** Bot scopes the manifest declares (the `bot:` list under oauth_config). */
 function manifestBotScopes(): string[] {
   const block = manifest.match(/\n {4}bot:\n([\s\S]*?)\nsettings:/);
   if (!block) throw new Error("bot scopes not found in the manifest");
-  return [...block[1].matchAll(/^ {6}- (\S+)/gm)].map((m) => m[1]);
+  return [...block[1].matchAll(/^ {6}- (\S+)/gm)].map(m => m[1]);
 }
 
 /** User scopes the manifest declares. Sign-in only by design. */
 function manifestUserScopes(): string[] {
   const block = manifest.match(/\n {4}user:\n([\s\S]*?)\n {4}bot:/);
   if (!block) throw new Error("user scopes not found in the manifest");
-  return [...block[1].matchAll(/^ {6}- (\S+)/gm)].map((m) => m[1]);
+  return [...block[1].matchAll(/^ {6}- (\S+)/gm)].map(m => m[1]);
 }
 
 describe("production Slack manifest", () => {
   it("declares exactly the scopes the install flow requests", () => {
     expect([...manifestBotScopes()].sort()).toEqual(
-      [...requestedScopes()].sort(),
+      [...requestedScopes()].sort()
     );
   });
 
@@ -88,7 +88,7 @@ describe("production Slack manifest", () => {
   it("[S2] points events at the cloud, not at the SaaS gateway", () => {
     // The API Gateway strips Slack's signature headers, so events must go
     // straight to the VM behind Caddy.
-    const urls = [...manifest.matchAll(/request_url: (\S+)/g)].map((m) => m[1]);
+    const urls = [...manifest.matchAll(/request_url: (\S+)/g)].map(m => m[1]);
     expect(urls.length).toBeGreaterThan(0);
     for (const url of urls) {
       expect(url).toBe("https://hooks.opentag.farol.team/slack/events");
@@ -133,6 +133,17 @@ const KEPT_HOSTS = new Set([
   "hooks.opentag.farol.team",
 ]);
 
+/**
+ * The one reverse-DNS identifier the rename keeps, spelled out. A pattern
+ * here — `team.<parent>.<anything>` — would bless the identifier this card
+ * exists to change, since the OLD bundle id has exactly that shape; and a
+ * `git grep` guard reports `path:line:text`, so the identifier in `config.rs`
+ * stops being a survivor the moment its crate directory is renamed, whether
+ * or not anyone touched the string. [S10] asserts both files directly for
+ * that reason; this constant only keeps them out of the survivor list.
+ */
+const KEPT_IDENTIFIER = "team.farol.opentag";
+
 /** Remove every form of the old name the rename keeps, so that whatever
  *  survives is a leftover. */
 function stripKeptNames(line: string): string {
@@ -140,15 +151,14 @@ function stripKeptNames(line: string): string {
     line
       // the GitHub org path, which is not moving
       .replace(/f[a]rol-team/gi, "")
-      // reverse DNS of a host under the parent domain — the keychain service
-      // and the bundle identifier read the target host backwards
-      .replace(/team\.f[a]rol\.[a-z0-9-]+/gi, "")
+      // the kept reverse-DNS identifier, and only it
+      .replaceAll(KEPT_IDENTIFIER, "")
       // ...and the same identifier split into the qualifier, organization and
       // application that the directories crate asks for
       .replace(/"team",\s*"f[a]rol"/gi, "")
       // a host under the parent domain, kept only if it is one of ours
-      .replace(/[a-z0-9.-]*f[a]rol\.team/gi, (host) =>
-        KEPT_HOSTS.has(host.toLowerCase()) ? "" : host,
+      .replace(/[a-z0-9.-]*f[a]rol\.team/gi, host =>
+        KEPT_HOSTS.has(host.toLowerCase()) ? "" : host
       )
   );
 }
@@ -191,7 +201,9 @@ describe("the OpenTag rename", () => {
     // A grep that matched nothing at all would pass the filter below for the
     // wrong reason — the kept forms are still in the tree by design.
     expect(hits.length).toBeGreaterThan(0);
-    const survivors = hits.filter((line) => /f[a]rol/i.test(stripKeptNames(line)));
+    const survivors = hits.filter(line =>
+      /f[a]rol/i.test(stripKeptNames(line))
+    );
     expect(survivors).toEqual([]);
   });
 
@@ -200,8 +212,10 @@ describe("the OpenTag rename", () => {
   // all: the deploy is where a half-swept family surfaces, long after every
   // suite went green. So each family below is pinned at its declaration and
   // at the code that reads it, the way [S5] pins the handshake headers.
+  // Nor can it say the new spelling is OpenTag rather than some third name —
+  // [S9] and [S10] pin the identities the guard would otherwise wave through.
 
-  it("[S1] reads in cloud/ exactly the env vars cloud/ declares", () => {
+  it("[S8] reads in cloud/ exactly the env vars cloud/ declares", () => {
     const config = read("cloud/app/config.py");
     const example = read("cloud/.env.example");
     const compose = read("cloud/docker-compose.yml");
@@ -209,7 +223,7 @@ describe("the OpenTag rename", () => {
     // Required means no default: startup dies without it, so both the
     // template a person copies and the compose file must carry it.
     const required = [...config.matchAll(/os\.environ\["([A-Z0-9_]+)"\]/g)]
-      .map((m) => m[1])
+      .map(m => m[1])
       .sort();
     expect(required).toEqual([
       "INTERNAL_API_SECRET",
@@ -220,49 +234,55 @@ describe("the OpenTag rename", () => {
     ]);
 
     const declared = new Set(
-      [...example.matchAll(/^([A-Z0-9_]+)=/gm)].map((m) => m[1]),
+      [...example.matchAll(/^([A-Z0-9_]+)=/gm)].map(m => m[1])
     );
     const passedThrough = new Set(
-      [...compose.matchAll(/^ {6}([A-Z0-9_]+): /gm)].map((m) => m[1]),
+      [...compose.matchAll(/^ {6}([A-Z0-9_]+): /gm)].map(m => m[1])
     );
     for (const name of required) {
-      expect(declared.has(name), `${name} missing from cloud/.env.example`).toBe(
-        true,
-      );
+      expect(
+        declared.has(name),
+        `${name} missing from cloud/.env.example`
+      ).toBe(true);
       expect(
         passedThrough.has(name),
-        `${name} missing from cloud/docker-compose.yml`,
+        `${name} missing from cloud/docker-compose.yml`
       ).toBe(true);
     }
   });
 
-  it("[S1] reads in app/ exactly the env vars app/.env.example declares", () => {
+  it("[S8] reads in app/ exactly the env vars app/.env.example declares", () => {
     const envTs = read("app/api/lib/env.ts");
     const example = read("app/.env.example");
 
-    const cloudUrl = envTs.match(/(\w+): \(process\.env\.(\w+) \?\? ""\)/);
-    expect(cloudUrl, "env.ts must expose the cloud service URL").not.toBeNull();
-    expect(cloudUrl![1]).toBe("opentagCloudUrl");
-    expect(cloudUrl![2]).toBe("OPENTAG_CLOUD_URL");
+    // Matched on CLOUD_URL, not on position: env.ts has other fields of the
+    // same `(process.env.X ?? "")` shape, and reordering the object must not
+    // decide which one this assertion is talking about.
+    const cloudUrl = [
+      ...envTs.matchAll(/(\w+): \(process\.env\.(\w*CLOUD_URL) \?\? ""\)/g),
+    ];
+    expect(cloudUrl.length, "env.ts must expose the cloud service URL").toBe(1);
+    expect(cloudUrl[0][1]).toBe("opentagCloudUrl");
+    expect(cloudUrl[0][2]).toBe("OPENTAG_CLOUD_URL");
 
     const declared = new Set(
-      [...example.matchAll(/^([A-Z0-9_]+)=/gm)].map((m) => m[1]),
+      [...example.matchAll(/^([A-Z0-9_]+)=/gm)].map(m => m[1])
     );
     const consumed = [
-      ...[...envTs.matchAll(/required\("([A-Z0-9_]+)"\)/g)].map((m) => m[1]),
-      ...[...envTs.matchAll(/process\.env\.([A-Z0-9_]+)/g)].map((m) => m[1]),
+      ...[...envTs.matchAll(/required\("([A-Z0-9_]+)"\)/g)].map(m => m[1]),
+      ...[...envTs.matchAll(/process\.env\.([A-Z0-9_]+)/g)].map(m => m[1]),
     ]
       // NODE_ENV is the runtime's, not this app's; nothing declares it.
-      .filter((name) => name !== "NODE_ENV");
+      .filter(name => name !== "NODE_ENV");
     expect(consumed.length).toBeGreaterThan(0);
     for (const name of new Set(consumed)) {
       expect(declared.has(name), `${name} missing from app/.env.example`).toBe(
-        true,
+        true
       );
     }
   });
 
-  it("[S1] tells a person to export the env vars the runner reads", () => {
+  it("[S8] tells a person to export the env vars the runner reads", () => {
     const runners = read("app/src/pages/dashboard/Runners.tsx");
     const sources = [
       read("runner/crates/opentag-core/examples/headless.rs"),
@@ -277,8 +297,8 @@ describe("the OpenTag rename", () => {
         ...[...sources.matchAll(/env::var(?:_os)?\("([A-Z0-9_]+)"\)/g)],
         ...[...sources.matchAll(/option_env!\("([A-Z0-9_]+)"\)/g)],
       ]
-        .map((m) => m[1])
-        .filter((name) => !os.has(name)),
+        .map(m => m[1])
+        .filter(name => !os.has(name))
     );
     expect([...reads].sort()).toEqual([
       "OPENTAG_ALLOWED_CWDS",
@@ -289,7 +309,7 @@ describe("the OpenTag rename", () => {
     // The dashboard hands out a copy-paste snippet; every variable it exports
     // has to be one the runner actually looks at.
     const exported = [...runners.matchAll(/export ([A-Z0-9_]+)=/g)].map(
-      (m) => m[1],
+      m => m[1]
     );
     expect(exported.length).toBeGreaterThan(0);
     for (const name of new Set(exported)) {
@@ -303,7 +323,7 @@ describe("the OpenTag rename", () => {
     const workspace = read("runner/Cargo.toml");
     const members = (workspace.match(/members = \[([^\]]*)\]/)?.[1] ?? "")
       .split(",")
-      .map((m) => m.trim().replace(/"/g, ""))
+      .map(m => m.trim().replace(/"/g, ""))
       .filter(Boolean);
     expect(members).toContain("crates/opentag-core");
     for (const member of members) {
@@ -311,7 +331,7 @@ describe("the OpenTag rename", () => {
     }
 
     expect(read("runner/crates/opentag-core/Cargo.toml")).toMatch(
-      /^name = "opentag-core"$/m,
+      /^name = "opentag-core"$/m
     );
 
     const desktopToml = read("runner/apps/desktop/src-tauri/Cargo.toml");
@@ -319,28 +339,39 @@ describe("the OpenTag rename", () => {
     const dep = desktopToml.match(/^opentag-core = \{ path = "([^"]+)"/m);
     expect(dep, "src-tauri must depend on opentag-core").not.toBeNull();
     expect(
-      existsSync(resolve(root, "runner/apps/desktop/src-tauri", dep![1])),
+      existsSync(resolve(root, "runner/apps/desktop/src-tauri", dep![1]))
     ).toBe(true);
 
     // Whatever the desktop app imports must be the crate the workspace builds.
     const lib = read("runner/apps/desktop/src-tauri/src/lib.rs");
-    const imported = [...lib.matchAll(/^use (\w+_core)::/gm)].map((m) => m[1]);
+    const imported = [...lib.matchAll(/^use (\w+_core)::/gm)].map(m => m[1]);
     expect(imported.length).toBeGreaterThan(0);
     expect([...new Set(imported)]).toEqual(["opentag_core"]);
     expect(read("runner/apps/desktop/src-tauri/src/main.rs")).toContain(
-      "opentag_runner_desktop::run()",
+      "opentag_runner_desktop::run()"
     );
   });
 
   it("[S5] announces x-opentag-runner-* and the cloud reads those same names", () => {
     const cloudRs = read("runner/crates/opentag-core/src/cloud.rs");
     const runnerApi = read("cloud/app/runner_api.py");
+    // Deduplicated on both sides: this compares two vocabularies, and a
+    // second mention of a header name (a doc comment, a retry path) is not a
+    // third header.
     const sent = [
-      ...cloudRs.matchAll(/"(x-[a-z0-9-]+-runner-[a-z]+)"/g),
-    ].map((m) => m[1]);
+      ...new Set(
+        [...cloudRs.matchAll(/"(x-[a-z0-9-]+-runner-[a-z]+)"/g)].map(m => m[1])
+      ),
+    ];
     const received = [
-      ...runnerApi.matchAll(/headers\.get\("(x-[a-z0-9-]+-runner-[a-z]+)"/g),
-    ].map((m) => m[1]);
+      ...new Set(
+        [
+          ...runnerApi.matchAll(
+            /headers\.get\("(x-[a-z0-9-]+-runner-[a-z]+)"/g
+          ),
+        ].map(m => m[1])
+      ),
+    ];
     expect([...sent].sort()).toEqual([
       "x-opentag-runner-os",
       "x-opentag-runner-version",
@@ -356,7 +387,7 @@ describe("the OpenTag rename", () => {
     const configRs = read("runner/crates/opentag-core/src/config.rs");
     const hosts = [
       ...configRs.matchAll(/(?:wss|https):\/\/([a-z0-9.-]+)/g),
-    ].map((m) => m[1]);
+    ].map(m => m[1]);
     expect(hosts.length).toBeGreaterThan(0);
     expect([...new Set(hosts)].sort()).toEqual([
       "hooks.opentag.farol.team",
@@ -373,13 +404,15 @@ describe("the OpenTag rename", () => {
   it("[S6] publishes, updates from and offers for download the same assets", () => {
     const workflow = read(".github/workflows/runner-release.yml");
     const runners = read("app/src/pages/dashboard/Runners.tsx");
-    const tauri = JSON.parse(read("runner/apps/desktop/src-tauri/tauri.conf.json"));
+    const tauri = JSON.parse(
+      read("runner/apps/desktop/src-tauri/tauri.conf.json")
+    );
     const tracker = JSON.parse(read(".claude/tracker.json"));
 
     expect(workflow).toContain(
-      "cargo build --release -p opentag-core --example headless",
+      "cargo build --release -p opentag-core --example headless"
     );
-    expect([...workflow.matchAll(/asset: (\S+)/g)].map((m) => m[1])).toEqual([
+    expect([...workflow.matchAll(/asset: (\S+)/g)].map(m => m[1])).toEqual([
       "opentag-runner-darwin-arm64",
       "opentag-runner-darwin-x64",
     ]);
@@ -401,11 +434,77 @@ describe("the OpenTag rename", () => {
 
     // The build stamp shown in the app footer is set by this workflow.
     const stamped = [...workflow.matchAll(/^ *(\w+_BUILD_SHA):/gm)].map(
-      (m) => m[1],
+      m => m[1]
     );
     expect(stamped).toEqual(["OPENTAG_BUILD_SHA"]);
     expect(read("runner/apps/desktop/src-tauri/src/lib.rs")).toContain(
-      'option_env!("OPENTAG_BUILD_SHA")',
+      'option_env!("OPENTAG_BUILD_SHA")'
+    );
+  });
+
+  it("[S9] names the OV service users, the cookie and the attachments dir OpenTag", () => {
+    // Outside the families pinned above, the guarded grep proves only that
+    // the old name is gone — `ov-ingest`, `sid`, `.agent` would all pass it.
+    // These are identities and paths that live on after the rename (an
+    // OV tenant's history, a browser's cookie jar, a checkout on disk), so
+    // each is pinned to the spelling positively.
+    const memory = read("cloud/app/memory.py");
+    const ingest = memory.match(/^INGEST_USER = "([a-z0-9-]+)"$/m);
+    expect(
+      ingest,
+      "memory.py must name the ingest service user"
+    ).not.toBeNull();
+    expect(ingest![1]).toBe("opentag-ingest");
+
+    const admin = memory.match(/admin_user_id: str = "([a-z0-9-]+)"/);
+    expect(admin, "memory.py must name the admin service user").not.toBeNull();
+    expect(admin![1]).toBe("opentag-admin");
+
+    // The dashboard reads OV under one identity, in every call it makes.
+    const dashboard = [
+      ...read("cloud/app/internal_api.py").matchAll(
+        /ov_client\.\w+\(\s*account,\s*"([a-z0-9-]+)"/g
+      ),
+    ].map(m => m[1]);
+    expect(dashboard.length).toBeGreaterThan(0);
+    expect([...new Set(dashboard)]).toEqual(["opentag-dashboard"]);
+
+    const cookie = read("app/contracts/constants.ts").match(
+      /cookieName: "([a-z0-9_]+)"/
+    );
+    expect(cookie, "constants.ts must name the session cookie").not.toBeNull();
+    expect(cookie![1]).toBe("opentag_sid");
+
+    // Written into whatever repository the agent is working in, so it is a
+    // name other people read in `git status`.
+    const attachments = read("runner/crates/opentag-core/src/session.rs").match(
+      /cwd\.join\("(\.[a-z0-9-]+)"\)/
+    );
+    expect(attachments, "session.rs must name the dot dir").not.toBeNull();
+    expect(attachments![1]).toBe(".opentag");
+  });
+
+  it("[S10] keeps exactly one reverse-DNS identifier, and it is the OpenTag one", () => {
+    const configRs = read("runner/crates/opentag-core/src/config.rs");
+    const tauri = JSON.parse(
+      read("runner/apps/desktop/src-tauri/tauri.conf.json")
+    );
+
+    // Read off the two files rather than inferred from the survivor list:
+    // the guard reports `path:line:text`, so once the crate directory is
+    // renamed a stale identifier inside it stops being a survivor with
+    // nobody having touched the string. The keychain entry a person already
+    // granted and the bundle id macOS remembers are exactly the names that
+    // must not be left half-renamed.
+    const keyring = configRs.match(/const KEYRING_SERVICE: &str = "([^"]+)"/);
+    expect(keyring, "config.rs must name the keychain service").not.toBeNull();
+    expect(keyring![1]).toBe(KEPT_IDENTIFIER);
+    expect(tauri.identifier).toBe(KEPT_IDENTIFIER);
+
+    // ...and the same identifier in the split form the directories crate
+    // asks for: qualifier, organization, application.
+    expect(configRs).toContain(
+      'ProjectDirs::from("team", "farol", "opentag-runner")'
     );
   });
 

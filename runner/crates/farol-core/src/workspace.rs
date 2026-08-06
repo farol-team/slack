@@ -66,14 +66,16 @@ mod tests {
         assert_eq!(slugify(""), "unnamed");
     }
 
-    /// [S4] The work dir is under `~/OpenTag`, not under the old name.
+    /// [S4] The work dir is under `~/OpenTag`, not under the old name — so
+    /// the path a person sees in Finder is `~/OpenTag/acme/dev`. That the
+    /// channel hangs off the root is already proved above against `/data`;
+    /// what is new here is the name of the root itself.
     ///
     /// HOME is read, never set: the variable is process-wide and the tests
     /// run in parallel, so writing it here would race the others.
     #[test]
     fn s4_the_agent_works_under_opentag_in_the_home_directory() {
         let root = default_root();
-        assert_eq!(root.file_name().unwrap().to_str().unwrap(), "OpenTag");
         match std::env::var_os("HOME") {
             Some(home) if !home.is_empty() => {
                 assert_eq!(root, PathBuf::from(home).join("OpenTag"));
@@ -81,15 +83,5 @@ mod tests {
             // No home to speak of: the fallback is still the product name.
             _ => assert_eq!(root, PathBuf::from("OpenTag")),
         }
-    }
-
-    /// [S4] ...and `<workspace>/<channel>` hangs off that root, so the path a
-    /// person sees in Finder is `~/OpenTag/acme/dev`.
-    #[test]
-    fn s4_channel_directories_hang_off_the_opentag_root() {
-        let root = default_root();
-        let path = derive_path(&root, "Acme", "dev");
-        assert!(root.ends_with("OpenTag"));
-        assert_eq!(path.strip_prefix(&root).unwrap(), Path::new("acme/dev"));
     }
 }
