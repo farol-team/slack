@@ -110,13 +110,13 @@ function SlackMock() {
               <span className="text-[11px] text-white/30">14:02</span>
             </div>
             <p className="text-white/80">
-              <span className="rounded bg-violet-500/20 px-1 text-violet-300">@farol</span>{" "}
+              <span className="rounded bg-violet-500/20 px-1 text-violet-300">@opentag</span>{" "}
               why did checkout latency spike after the 13:40 deploy?
             </p>
           </div>
           <div className="border-l-2 border-violet-500/40 pl-4">
             <div className="mb-1 flex items-baseline gap-2">
-              <span className="font-semibold text-violet-300">farol</span>
+              <span className="font-semibold text-violet-300">opentag</span>
               <span className="rounded bg-emerald-500/15 px-1.5 py-0.5 text-[10px] uppercase tracking-wide text-emerald-300">agent</span>
               <span className="text-[11px] text-white/30">14:02</span>
             </div>
@@ -173,7 +173,7 @@ export default function Home() {
       <header className="sticky top-0 z-20 border-b border-white/5 bg-[#0d0a1a]/80 backdrop-blur">
         <div className="mx-auto flex h-14 max-w-6xl items-center justify-between px-6">
           <div className="flex items-center gap-2 font-semibold tracking-tight">
-            <Brain className="h-5 w-5 text-violet-400" /> Farol
+            <Brain className="h-5 w-5 text-violet-400" /> OpenTag
           </div>
           <nav className="flex items-center gap-6">
             <a href="#how" className="hidden text-sm text-violet-100/60 transition-colors hover:text-white sm:block">
@@ -309,7 +309,7 @@ export default function Home() {
             </span>
           </h2>
           <p className="mx-auto mt-6 max-w-2xl text-lg leading-relaxed text-violet-100/60">
-            That's why Farol is AI that helps teams think, create, and ship
+            That's why OpenTag is AI that helps teams think, create, and ship
             more together — agents that live inside your conversations and
             remember everything your team knows.
           </p>
@@ -431,7 +431,7 @@ export default function Home() {
 
       <footer className="border-t border-white/5">
         <div className="mx-auto flex max-w-6xl flex-col gap-2 px-6 py-8 text-sm text-violet-100/40 sm:flex-row sm:justify-between">
-          <span>Farol — Slack Memory Layer for AI Agents</span>
+          <span>OpenTag — Slack Memory Layer for AI Agents</span>
           <span>OpenViking · ACP · MCP</span>
         </div>
       </footer>

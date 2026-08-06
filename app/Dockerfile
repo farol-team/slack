@@ -1,4 +1,4 @@
-# Runtime image for the Farol SaaS panel. The build (vite + esbuild)
+# Runtime image for the OpenTag SaaS panel. The build (vite + esbuild)
 # happens outside; dist/boot.js is self-contained (deps bundled), static
 # files are served from dist/public.
 FROM node:22-slim
