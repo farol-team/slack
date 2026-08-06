@@ -36,7 +36,7 @@ export default function DashboardLayout() {
     <div className="min-h-screen flex bg-background text-foreground">
       <aside className="w-60 border-r flex flex-col shrink-0">
         <div className="h-14 flex items-center gap-2 px-5 border-b font-semibold">
-          <Brain className="h-5 w-5 text-primary" /> Farol
+          <Brain className="h-5 w-5 text-primary" /> OpenTag
         </div>
         <nav className="flex-1 p-3 space-y-1">
           {menu.map((m) => (

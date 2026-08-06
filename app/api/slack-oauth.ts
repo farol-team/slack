@@ -211,12 +211,12 @@ export const slackRouter = createRouter({
         .from(workspaces)
         .where(eq(workspaces.id, input.workspaceId))
         .limit(1);
-      if (!ws?.slackTeamId || !env.farolCloudUrl || !INTERNAL_SECRET) {
+      if (!ws?.slackTeamId || !env.opentagCloudUrl || !INTERNAL_SECRET) {
         return { channels: [] as { id: string; name: string; is_member: boolean }[] };
       }
       try {
         const res = await fetch(
-          `${env.farolCloudUrl}/internal/channels/${ws.slackTeamId}`,
+          `${env.opentagCloudUrl}/internal/channels/${ws.slackTeamId}`,
           { headers: { "x-internal-secret": INTERNAL_SECRET } },
         );
         if (!res.ok) return { channels: [] };
@@ -239,11 +239,11 @@ export const slackRouter = createRouter({
         .from(workspaces)
         .where(eq(workspaces.id, input.workspaceId))
         .limit(1);
-      if (!ws?.slackTeamId || !env.farolCloudUrl || !INTERNAL_SECRET) {
+      if (!ws?.slackTeamId || !env.opentagCloudUrl || !INTERNAL_SECRET) {
         throw new TRPCError({ code: "PRECONDITION_FAILED", message: "not connected" });
       }
       const res = await fetch(
-        `${env.farolCloudUrl}/internal/channels/${ws.slackTeamId}/join`,
+        `${env.opentagCloudUrl}/internal/channels/${ws.slackTeamId}/join`,
         {
           method: "POST",
           headers: {
@@ -399,7 +399,7 @@ export async function handleSlackCallback(
 
 /** Fire-and-forget: ask cloud to create the OV account for this team. */
 export async function triggerProvision(teamId: string): Promise<void> {
-  const cloudUrl = env.farolCloudUrl;
+  const cloudUrl = env.opentagCloudUrl;
   if (!cloudUrl || !INTERNAL_SECRET) return;
   try {
     await fetch(`${cloudUrl}/internal/provision`, {

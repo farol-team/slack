@@ -1,6 +1,6 @@
 """Cloud-side mirror of runner protocol.rs.
 
-Every frame on wss://api.farol.team/runner/v1 is a `type`-tagged
+Every frame on wss://hooks.opentag.farol.team/runner/v1 is a `type`-tagged
 envelope. Field names match the Rust serde representation exactly
 (snake_case tags, camelCase-free) so the runner and cloud stay in sync.
 """
@@ -42,7 +42,7 @@ class Hello(BaseModel):
     type: Literal["hello"] = "hello"
     token: str
     agents: list[str]
-    # Also sent as x-farol-runner-version / x-farol-runner-os on the WS
+    # Also sent as x-opentag-runner-version / x-opentag-runner-os on the WS
     # handshake; empty here means "take it from the headers" (runner_api).
     runner_version: str = ""
     os: str = ""
@@ -85,7 +85,7 @@ class AssignTurn(BaseModel):
     slack_channel: str
     slack_thread_ts: str
     # Human names, for the working directory the runner derives:
-    # ~/Farol/<workspace>/<channel>. Empty when Slack would not tell us.
+    # ~/OpenTag/<workspace>/<channel>. Empty when Slack would not tell us.
     workspace_name: str = ""
     channel_name: str = ""
     prompt: str

@@ -47,7 +47,7 @@ class Chat:
     workspace_id: str        # ovAccountId
     user_key: str            # owner = author of the first mention
     # Human names, passed to the runner so it can derive a working directory
-    # a person recognises: ~/Farol/<workspace>/<channel>.
+    # a person recognises: ~/OpenTag/<workspace>/<channel>.
     workspace_name: str = ""
     channel_name: str = ""
     cwd: str = ""
@@ -104,7 +104,7 @@ class ChatRouter:
     async def register(self, ws: WebSocket, hello: p.Hello) -> Optional[Runner]:
         """Authenticate runner token against the SaaS control plane
         (`runner.validate` tRPC procedure)."""
-        saas_url = os.environ["FAROL_SAAS_URL"].rstrip("/")
+        saas_url = os.environ["OPENTAG_SAAS_URL"].rstrip("/")
         workspace_id = user_key = None
 
         try:
@@ -183,7 +183,7 @@ class ChatRouter:
         hot path; a lost mirror write only degrades the dashboard."""
         async def send() -> None:
             try:
-                saas_url = os.environ["FAROL_SAAS_URL"].rstrip("/")
+                saas_url = os.environ["OPENTAG_SAAS_URL"].rstrip("/")
                 payload["secret"] = os.environ["INTERNAL_API_SECRET"]
                 async with httpx.AsyncClient(timeout=10) as client:
                     for attempt in range(3):
@@ -246,7 +246,7 @@ class ChatRouter:
             attachments=[
                 p.Attachment(
                     name=a["name"], mime=a["mime"], size=a["size"],
-                    url=f"{os.environ.get('FAROL_CLOUD_PUBLIC_URL', '').rstrip('/')}"
+                    url=f"{os.environ.get('OPENTAG_CLOUD_PUBLIC_URL', '').rstrip('/')}"
                         f"/files/{turn.turn_id}/{i}",
                 )
                 for i, a in enumerate(turn.attachments)

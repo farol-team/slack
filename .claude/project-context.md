@@ -1,6 +1,6 @@
 # Project context (read before touching code)
 
-Monorepo for **Farol**: mentioning the bot in Slack creates a task that
+Monorepo for **OpenTag**: mentioning the bot in Slack creates a task that
 runs on a local coding agent on a developer's machine; team memory lives
 in OpenViking. Full architecture: `CLAUDE.md` and `AGENTS.md` (keep both
 in sync when conventions change).
@@ -15,7 +15,7 @@ in sync when conventions change).
 
 ## Conventions that bite
 
-- **Protocol double mirror**: `runner/crates/farol-core/src/protocol.rs`
+- **Protocol double mirror**: `runner/crates/opentag-core/src/protocol.rs`
   and `cloud/app/protocol.py` define the same wire contract — change both
   in the same diff (constitution Article P1).
 - **app/** path aliases: `@/* → src/*`, `@contracts/*`, `@db/*`. tRPC

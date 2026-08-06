@@ -358,7 +358,7 @@ async def _mirror_file(account: str, channel: str, file_id: str, name: str,
     was stored has to be told; the record also turns a Slack deletion into
     one lookup instead of a walk of every channel."""
     try:
-        saas = os.environ["FAROL_SAAS_URL"].rstrip("/")
+        saas = os.environ["OPENTAG_SAAS_URL"].rstrip("/")
         secret = os.environ["INTERNAL_API_SECRET"]
         async with httpx.AsyncClient(timeout=10) as client:
             await client.post(
@@ -507,7 +507,7 @@ def register_handlers(app: AsyncApp, renderer: SlackRenderer,
         author = event["user"]
         user_key = await resolve_member(team_id, author)
         if user_key is None:
-            await say(text=f"<@{author}> I couldn't match you to a Farol "
+            await say(text=f"<@{author}> I couldn't match you to an OpenTag "
                            "account. Sign in to the dashboard with your work "
                            "email, then mention me again.", thread_ts=thread_ts)
             return
@@ -530,12 +530,12 @@ def register_handlers(app: AsyncApp, renderer: SlackRenderer,
         runner = router.pick_runner(workspace, user_key=user_key)
         if runner is None:
             await say(text=f"<@{author}> you don't have a runner connected. "
-                           "Install Farol Runner from the dashboard and press "
+                           "Install OpenTag Runner from the dashboard and press "
                            "Connect to Slack.", thread_ts=thread_ts)
             return
 
         if chat is None:
-            # Names, not ids: the runner builds ~/Farol/<workspace>/<channel>
+            # Names, not ids: the runner builds ~/OpenTag/<workspace>/<channel>
             # out of them. cwd stays empty — only the machine knows what
             # directories it has.
             name = (channel_name if channel_name is not None
@@ -664,7 +664,7 @@ def register_handlers(app: AsyncApp, renderer: SlackRenderer,
         team_id = context["team_id"]
         try:
             account = (await resolve_installation(team_id))["ov_account_id"]
-            saas = os.environ["FAROL_SAAS_URL"].rstrip("/")
+            saas = os.environ["OPENTAG_SAAS_URL"].rstrip("/")
             secret = os.environ["INTERNAL_API_SECRET"]
             async with httpx.AsyncClient(timeout=10) as client:
                 res = await client.post(

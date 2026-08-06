@@ -1,4 +1,4 @@
-# Release — Farol Runner
+# Release — OpenTag Runner
 
 How a build of the desktop app and the headless binaries reaches people, and
 how installed copies replace themselves. The SaaS and the cloud data plane
@@ -11,12 +11,12 @@ runs on tags matching `runner-v*`.
 
 | Asset | What it is |
 |---|---|
-| `farol-runner-macos.dmg` | the desktop app; signed, notarized, stapled |
-| `farol-runner-macos.app.tar.gz` | the same app as the updater downloads it |
+| `opentag-runner-macos.dmg` | the desktop app; signed, notarized, stapled |
+| `opentag-runner-macos.app.tar.gz` | the same app as the updater downloads it |
 | `latest.json` | the update feed installed copies poll |
-| `farol-runner-darwin-arm64` / `-x64` | headless runner for servers and CI |
+| `opentag-runner-darwin-arm64` / `-x64` | headless runner for servers and CI |
 
-The dashboard links to `releases/latest/download/farol-runner-macos.dmg`, and
+The dashboard links to `releases/latest/download/opentag-runner-macos.dmg`, and
 the updater polls `releases/latest/download/latest.json` — both follow whatever
 GitHub currently marks as the latest release, which is also how a rollback
 works (see below).
@@ -42,7 +42,7 @@ values there are the development baseline, and CI overwrites them from the tag.
 
 ## What CI does
 
-1. **Headless binaries** — builds `farol-core --example headless` for
+1. **Headless binaries** — builds `opentag-core --example headless` for
    `aarch64-apple-darwin` and `x86_64-apple-darwin` (the x64 target
    cross-compiles on the arm64 runner: one Apple SDK covers both, and the
    `macos-13` Intel queue is measured in hours). Each binary is signed with
@@ -100,19 +100,19 @@ Consequences worth remembering:
 
 ```bash
 # the feed is well formed and points at a real file
-curl -sL https://github.com/farol-team/slack/releases/latest/download/latest.json | jq '.version, .platforms | keys'
-curl -sIL https://github.com/farol-team/slack/releases/latest/download/farol-runner-macos.app.tar.gz | grep -E '^HTTP|content-length'
+curl -sL https://github.com/farol-team/opentag/releases/latest/download/latest.json | jq '.version, .platforms | keys'
+curl -sIL https://github.com/farol-team/opentag/releases/latest/download/opentag-runner-macos.app.tar.gz | grep -E '^HTTP|content-length'
 
 # the disk image is a real UDIF image carrying our identity
-curl -sL -o /tmp/farol.dmg https://github.com/farol-team/slack/releases/latest/download/farol-runner-macos.dmg
-python3 -c 'd=open("/tmp/farol.dmg","rb").read(); print("UDIF:", d[-512:-508]==b"koly", "signed:", b"83856566PM" in d)'
+curl -sL -o /tmp/opentag.dmg https://github.com/farol-team/opentag/releases/latest/download/opentag-runner-macos.dmg
+python3 -c 'd=open("/tmp/opentag.dmg","rb").read(); print("UDIF:", d[-512:-508]==b"koly", "signed:", b"83856566PM" in d)'
 
 # Apple accepted it and the ticket is attached
 gh run view <run-id> --json jobs --jq '.jobs[]|select(.name|startswith("desktop"))|.databaseId' \
   | xargs -I{} gh run view --job {} --log | grep -iE 'building version|status: Accepted|staple and validate'
 ```
 
-On a Mac, `spctl -a -t open --context context:primary-signature -v farol-runner-macos.dmg`
+On a Mac, `spctl -a -t open --context context:primary-signature -v opentag-runner-macos.dmg`
 is the direct check; from anywhere else the greps above are the practical
 substitute.
 
@@ -122,7 +122,7 @@ The updater and the dashboard both follow `releases/latest`, so a bad release
 is undone by moving that marker rather than by deleting anything:
 
 ```bash
-gh release edit runner-v0.1.1 -R farol-team/slack --latest   # the known-good one
+gh release edit runner-v0.1.1 -R farol-team/opentag --latest   # the known-good one
 ```
 
 Installed copies keep the newer version they already have — an updater only
@@ -132,13 +132,13 @@ release (a higher version) supersedes it everywhere.
 ## Linux
 
 The Linux headless build is parked: the matrix entry
-(`ubuntu-22.04` / `x86_64-unknown-linux-gnu` → `farol-runner-linux-x64`) is
+(`ubuntu-22.04` / `x86_64-unknown-linux-gnu` → `opentag-runner-linux-x64`) is
 commented out in the workflow, and the dashboard shows "Linux — soon". Putting
 the entry back is the whole change; nothing else in the pipeline is
 macOS-specific except the signing steps, which are already guarded by
 `runner.os == 'macOS'`.
 
-A Linux runner takes its token from `FAROL_RUNNER_TOKEN`. Do not rely on the
+A Linux runner takes its token from `OPENTAG_RUNNER_TOKEN`. Do not rely on the
 browser-approval flow there: on Linux the keyring stores the token in kernel
 keys, which do not survive a reboot, so a server would come back with no
 credentials and no way to say so.

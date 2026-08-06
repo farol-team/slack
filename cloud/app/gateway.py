@@ -28,7 +28,7 @@ from fastapi.responses import JSONResponse, StreamingResponse
 
 log = logging.getLogger("gateway")
 
-TOKEN_PREFIX = "fmt_"          # Farol memory token
+TOKEN_PREFIX = "fmt_"          # OpenTag memory token
 TOKEN_TTL_SECS = 12 * 3600
 
 # Tools that never touch shared resources (user-scoped or diagnostic).

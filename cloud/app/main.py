@@ -1,6 +1,6 @@
 """Entry point: assembles the three surfaces of the data plane.
 
-- hooks_api    — public, served via hooks.farol.team (caddy allowlist):
+- hooks_api    — public, served via hooks.opentag.farol.team (caddy allowlist):
                  /slack/events, /memory/mcp. Authenticated by request
                  content (Slack signatures, signed memory tokens).
 - runner_api   — /runner/v1 outbound-WS endpoint for thin clients.
@@ -33,7 +33,7 @@ async def lifespan(app: FastAPI):
     await deps.ov_client.close()
 
 
-app = FastAPI(title="Farol Cloud", version="0.1.0", lifespan=lifespan)
+app = FastAPI(title="OpenTag Cloud", version="0.1.0", lifespan=lifespan)
 app.include_router(hooks)
 app.include_router(runners)
 app.include_router(internal)

@@ -58,7 +58,7 @@ HTTP APIs, paid services, clock).
 *(Rationale: the cloud↔runner wire contract is defined twice — serde and
 pydantic — and drift between them fails only at runtime, on a user's
 machine.)*
-Any change to `runner/crates/farol-core/src/protocol.rs` MUST land in the
+Any change to `runner/crates/opentag-core/src/protocol.rs` MUST land in the
 same diff as the matching change to `cloud/app/protocol.py`, and vice
 versa. Tags and field names match 1-to-1 in snake_case. A diff touching
 one file without the other requires an explicit `n/a` justification

@@ -1,4 +1,4 @@
-# User Stories — Slack ↔ Local Agent + Shared Farol
+# User Stories — Slack ↔ Local Agent + Shared OpenTag
 
 Product framing:
 
@@ -106,7 +106,7 @@ the chat owner starts a new turn with `resume_session`. Only the owner drives th
 **C6. Pick the project** — 🟡
 As a user, work from a channel lands in a folder I recognise, and I can point a channel
 at a repository I already have.
-*Done: the runner derives `~/Farol/<workspace>/<channel>` and creates it; the cloud sends
+*Done: the runner derives `~/OpenTag/<workspace>/<channel>` and creates it; the cloud sends
 names, not paths. Gap: `bindings` (channel → existing folder) has no UI yet, and a
 mention cannot override the folder.*
 

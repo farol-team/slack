@@ -1,5 +1,5 @@
 //! Cloud protocol: messages exchanged between the runner and the SaaS
-//! over a single outbound WebSocket (wss://api.farol.team/runner/v1).
+//! over a single outbound WebSocket (wss://hooks.opentag.farol.team/runner/v1).
 //!
 //! Direction: the runner always dials out — no open ports on the client.
 
@@ -36,14 +36,14 @@ pub enum CloudMessage {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Hello {
     pub token: String,
-    /// Also sent as `x-farol-runner-version` on the WS handshake (see
+    /// Also sent as `x-opentag-runner-version` on the WS handshake (see
     /// `cloud::handshake_request`) — the cloud falls back to the header
     /// when this is empty.
     #[serde(default)]
     pub runner_version: String,
     /// Agents available locally, e.g. ["claude-code", "gemini"].
     pub agents: Vec<String>,
-    /// Also sent as `x-farol-runner-os` on the handshake.
+    /// Also sent as `x-opentag-runner-os` on the handshake.
     #[serde(default)]
     pub os: String,
 }
@@ -55,7 +55,7 @@ pub struct AssignTurn {
     pub slack_channel: String,
     pub slack_thread_ts: String,
     /// Human names behind those ids: the runner derives
-    /// ~/Farol/<workspace>/<channel> from them. Empty when Slack withheld them.
+    /// ~/OpenTag/<workspace>/<channel> from them. Empty when Slack withheld them.
     #[serde(default)]
     pub workspace_name: String,
     #[serde(default)]

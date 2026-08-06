@@ -1,8 +1,8 @@
-# Slack App Manifest for Farol — production (app id A0BP0QCBCMN).
+# Slack App Manifest for OpenTag — production (app id A0BP0QCBCMN).
 #
-# Events go DIRECTLY to the cloud VM (hooks.farol.team, caddy TLS): the
+# Events go DIRECTLY to the cloud VM (hooks.opentag.farol.team, caddy TLS): the
 # Yandex API Gateway strips Slack signature headers, so events cannot
-# pass through app.farol.team. OAuth redirects are browser redirects
+# pass through opentag.farol.team. OAuth redirects are browser redirects
 # (query params) and stay on the SaaS domain.
 #
 # Applying this REPLACES the whole app configuration — anything set by hand in
@@ -11,7 +11,7 @@
 # and remember that widening scopes does not reach installed workspaces: Slack
 # grants scopes at install time, so each workspace must reinstall.
 display_information:
-  name: Farol
+  name: OpenTag
   description: Slack ↔ your local AI agents, with team memory
   background_color: "#590088"
   long_description: >-
@@ -20,12 +20,12 @@ display_information:
     your team ever said, and streams the answer back.
 features:
   bot_user:
-    display_name: farol
+    display_name: opentag
     always_online: true
 oauth_config:
   redirect_urls:
-    - https://app.farol.team/api/slack/callback
-    - https://app.farol.team/api/oauth/callback
+    - https://opentag.farol.team/api/slack/callback
+    - https://opentag.farol.team/api/oauth/callback
   scopes:
     user:
       # Sign-in only. The agent never acts as a human and never reads with
@@ -74,9 +74,9 @@ settings:
   # interactions on the same endpoint as events.
   interactivity:
     is_enabled: true
-    request_url: https://hooks.farol.team/slack/events
+    request_url: https://hooks.opentag.farol.team/slack/events
   event_subscriptions:
-    request_url: https://hooks.farol.team/slack/events
+    request_url: https://hooks.opentag.farol.team/slack/events
     bot_events:
       - app_mention
       - message.channels

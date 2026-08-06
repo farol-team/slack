@@ -1,6 +1,6 @@
-# Farol Runner — thin client (Rust + Tauri)
+# OpenTag Runner — thin client (Rust + Tauri)
 
-Thin client of the **Farol** service: lives in the system tray
+Thin client of the **OpenTag** service: lives in the system tray
 on a developer's machine, holds an **outbound** WebSocket connection to the cloud,
 and executes tasks from Slack on a local coding agent via **ACP (Agent Client Protocol)**.
 
@@ -9,7 +9,7 @@ and executes tasks from Slack on a local coding agent via **ACP (Agent Client Pr
 ```
  Slack                       Cloud (SaaS)                  This client
 ┌────────┐  Events API   ┌──────────────┐   wss (outbound) ┌──────────────────────┐
-│ @bot   │──────────────►│ Task Router  │◄────────────────►│ Farol Runner (Tauri)    │
+│ @bot   │──────────────►│ Task Router  │◄────────────────►│ OpenTag Runner (Tauri)  │
 │ in     │               │ + OpenViking │                  │  ├─ cloud.rs   WS+   │
 │ thread │               └──────┬───────┘                  │  │           reconnect│
 └───▲────┘                      │ AssignTask               │  ├─ acp.rs   JSON-RPC│
@@ -34,7 +34,7 @@ Principles:
 - **Memory from the cloud**: `AssignTurn.memory` contains the OpenViking MCP endpoint;
   the client passes it to the agent on `session/new` — the agent gets the team's memory.
 - **Security**: the agent runs only inside directories the person opened up —
-  everything under `root_dir` (`~/Farol`, where `<workspace>/<channel>` folders are
+  everything under `root_dir` (`~/OpenTag`, where `<workspace>/<channel>` folders are
   derived), any channel `bindings`, and extra `allowed_cwds`; the token lives in
   the OS keychain, not in a file; destructive actions are confirmed via buttons in Slack
   (`session/request_permission` → Slack → `PermissionDecision`).
@@ -43,14 +43,14 @@ Principles:
 
 ```
 runner/
-├── crates/farol-core/        # verified with cargo check ✅
+├── crates/opentag-core/       # verified with cargo check ✅
 │   ├── src/
 │   │   ├── protocol.rs        # cloud ↔ runner message contract
 │   │   ├── acp.rs             # ACP client (JSON-RPC stdio)
 │   │   ├── cloud.rs           # WebSocket loop with reconnect/backoff
 │   │   ├── session.rs         # SessionManager: task → ACP session
 │   │   ├── agents.rs          # pinned ACP adapters + PATH resolution
-│   │   ├── workspace.rs       # ~/Farol/<workspace>/<channel> derivation
+│   │   ├── workspace.rs       # ~/OpenTag/<workspace>/<channel> derivation
 │   │   ├── connect.rs         # browser handoff: approve in the dashboard
 │   │   └── config.rs          # config + keychain (token)
 │   └── examples/
@@ -79,16 +79,16 @@ The core can be checked on its own: `cargo check` in the workspace root.
 Headless mode without the Tauri UI (for dev debugging and E2E tests):
 
 ```bash
-FAROL_RUNNER_TOKEN=frl_... cargo run -p farol-core --example headless
+OPENTAG_RUNNER_TOKEN=frl_... cargo run -p opentag-core --example headless
 ```
 
-The token is taken from the `FAROL_RUNNER_TOKEN` env var (falls back to the OS keychain);
+The token is taken from the `OPENTAG_RUNNER_TOKEN` env var (falls back to the OS keychain);
 config is the standard `RunnerConfig::load()`. With no token available, the runner
 starts the **runner-connect** flow: it prints an authorization URL, the user signs
 in with Slack and approves the runner, and the token is delivered automatically
 (browser handoff with polling — Slack has no device flow). The desktop app exposes the same flow
 via its single "Connect to Slack" button. Headless machines without a browser use
-a token issued in the dashboard, passed as `FAROL_RUNNER_TOKEN`.
+a token issued in the dashboard, passed as `OPENTAG_RUNNER_TOKEN`.
 
 ## Protocol (wss, JSON)
 

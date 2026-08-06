@@ -15,9 +15,9 @@ import { useState } from "react";
 import { Plus, Copy, Trash2, CheckCircle2, Download, ChevronRight } from "lucide-react";
 
 const RELEASE_BASE =
-  "https://github.com/farol-team/slack/releases/latest/download";
+  "https://github.com/farol-team/opentag/releases/latest/download";
 const DOWNLOADS = [
-  { label: "macOS", url: `${RELEASE_BASE}/farol-runner-macos.dmg` },
+  { label: "macOS", url: `${RELEASE_BASE}/opentag-runner-macos.dmg` },
 ];
 
 export default function Runners() {
@@ -123,7 +123,7 @@ export default function Runners() {
             <CardContent className="space-y-3">
               <p className="text-sm text-muted-foreground">
                 For machines without a browser (servers, CI): create a token and
-                pass it to the headless runner via <code>FAROL_RUNNER_TOKEN</code>.
+                pass it to the headless runner via <code>OPENTAG_RUNNER_TOKEN</code>.
               </p>
               <div className="flex gap-3">
                 <Input placeholder="Label (e.g. ci-build-agent)" value={label} onChange={(e) => setLabel(e.target.value)} />
@@ -139,18 +139,18 @@ export default function Runners() {
             <CardHeader><CardTitle className="text-base">Run it on the machine</CardTitle></CardHeader>
             <CardContent className="space-y-3">
               <pre className="bg-muted p-3 rounded-md text-xs overflow-x-auto">
-{`export FAROL_RUNNER_TOKEN=frl_...
-./farol-runner-darwin-arm64
+{`export OPENTAG_RUNNER_TOKEN=frl_...
+./opentag-runner-darwin-arm64
 
-# Each channel works in its own folder under ~/Farol. To let the agent
+# Each channel works in its own folder under ~/OpenTag. To let the agent
 # into folders you already have, add them:
-export FAROL_ALLOWED_CWDS=$HOME/projects`}
+export OPENTAG_ALLOWED_CWDS=$HOME/projects`}
               </pre>
               <p className="text-sm text-muted-foreground">
                 The coding agent is a separate program the runner talks to over
                 ACP. The desktop app installs one on a press; headless, fetch an
                 adapter yourself and name it in{" "}
-                <code>~/.config/farol-runner/config.json</code>:
+                <code>~/.config/opentag-runner/config.json</code>:
               </p>
               <pre className="bg-muted p-3 rounded-md text-xs overflow-x-auto">
 {`npm install -g @agentclientprotocol/claude-agent-acp   # or codex-acp, opencode-ai

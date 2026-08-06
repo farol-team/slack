@@ -21,12 +21,12 @@ fn handshake_request(url: &str, version: &str, os: &str) -> Option<Request<()>> 
     let mut req = url.into_client_request().ok()?;
     let headers = req.headers_mut();
     if !version.is_empty() {
-        headers.insert("x-farol-runner-version", HeaderValue::from_str(version).ok()?);
+        headers.insert("x-opentag-runner-version", HeaderValue::from_str(version).ok()?);
     }
     if !os.is_empty() {
-        headers.insert("x-farol-runner-os", HeaderValue::from_str(os).ok()?);
+        headers.insert("x-opentag-runner-os", HeaderValue::from_str(os).ok()?);
     }
-    let agent = format!("farol-runner/{} ({})",
+    let agent = format!("opentag-runner/{} ({})",
                         if version.is_empty() { "unknown" } else { version },
                         if os.is_empty() { "unknown" } else { os });
     headers.insert(USER_AGENT, HeaderValue::from_str(&agent).ok()?);
@@ -104,7 +104,7 @@ where
                 info!("cloud loop stopped");
                 return;
             }
-            info!("connecting to {cloud_url} as farol-runner/{version} ({os})");
+            info!("connecting to {cloud_url} as opentag-runner/{version} ({os})");
             let attempt = match handshake_request(&cloud_url, &version, &os) {
                 Some(req) => connect_async(req).await,
                 // A URL the header builder choked on is still a URL worth
