@@ -21,5 +21,6 @@ House rules, so these stay worth reading:
 | [Multica](2026-08-05-multica.md) | 2026-08-05 | Open-source managed-agents platform with a local daemon — how much overlap? |
 | [Runner gaps](2026-08-05-runner-gaps.md) | 2026-08-05 | What the two spikes plus a day of live debugging say our runner is missing |
 | [qm](2026-08-05-qm.md) | 2026-08-05 | The hosted answer to the question we answer locally — what to copy from a 76k-line Slack agent harness |
+| [Roles](2026-08-06-roles.md) | 2026-08-06 | Where a "virtual employee" is stored and how it runs — and why qm has no role object |
 | [Slack agent market](2026-08-05-slack-agent-market.md) | 2026-08-05 | 25 agents that live in Slack — pricing, execution substrate, and whether the coding shelf is worth standing on |
 | [Idea challenge](2026-08-06-idea-challenge.md) | 2026-08-06 | Eight ways "Slack + agent + memory" dies, what would have to be true, and which third survives |
