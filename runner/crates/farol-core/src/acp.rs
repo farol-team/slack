@@ -310,9 +310,13 @@ fn map_session_update(params: &Value) -> Option<AcpEvent> {
         "tool_call" => Some(AcpEvent::ToolCall {
             title: update.get("title").and_then(Value::as_str).unwrap_or("tool").into(),
         }),
-        "tool_call_update" => Some(AcpEvent::ToolCallUpdate {
-            title: update.get("title").and_then(Value::as_str).unwrap_or("tool").into(),
-        }),
+        // An update carries only what changed; `title` is required on the
+        // call, optional here. Inventing one produced a stream of "tool"
+        // messages that said nothing — an untitled update is not news.
+        "tool_call_update" => update
+            .get("title")
+            .and_then(Value::as_str)
+            .map(|t| AcpEvent::ToolCallUpdate { title: t.into() }),
         "plan" => Some(AcpEvent::Plan(
             update.get("entries").map(|e| e.to_string()).unwrap_or_default(),
         )),

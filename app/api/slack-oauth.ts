@@ -20,28 +20,43 @@ const PUBLIC_URL = env.publicUrl;
 const INTERNAL_SECRET = env.internalApiSecret;
 
 export const SLACK_SCOPES = [
+  // What the bot itself may do. Matched against the production manifest by
+  // api/slack-manifest.test.ts — the two move together or the test fails.
   "app_mentions:read",
+  "assistant:write",     // the assistant pane in Slack
+  "bookmarks:read",
+  "bookmarks:write",
+  "canvases:read",
+  "canvases:write",      // an answer can be a document, not only a message
   "channels:history",
+  "channels:join",       // the dashboard adds the bot without an /invite
   "channels:read",
   "chat:write",
+  "chat:write.customize",
+  "commands",
+  "emoji:read",
+  "files:read",          // screenshots and logs attached to the question
+  "files:write",         // and results handed back as files
   "groups:history",
   "groups:read",
-  // Marks the message that asked: 👀 while the runner works, ✅ when it lands.
-  "reactions:write",
-  // BYOA needs to know who mentioned the bot: the member link is matched by
-  // email on first contact (`users_info`), and ingestion names the authors it
-  // archives. Missing here, a fresh install cannot route a single mention.
-  "users:read",
-  "users:read.email",
-  // A DM to the bot is the same conversation, with its own memory scope.
-  "im:history",
+  "im:history",          // a DM to the bot is a task, no mention needed
   "im:read",
   "im:write",
-  // Screenshots and logs people attach to the question they are asking.
-  "files:read",
-  // So the dashboard can put the bot in a channel without an /invite.
-  "channels:join",
+  "mpim:history",        // group DMs are conversations too
+  "mpim:read",
+  "mpim:write",
+  "pins:read",
+  "pins:write",
+  "reactions:read",
+  "reactions:write",     // 👀 while the runner works, ✅ when it lands
+  "search:read.public",
+  "team:read",
+  "usergroups:read",
+  "users.profile:read",
+  "users:read",          // resolve the mention author -> member (BYOA routing)
+  "users:read.email",
 ].join(",");
+
 
 const redirectUri = () => `${PUBLIC_URL}/api/slack/callback`;
 

@@ -166,6 +166,7 @@ class SlackRenderer:
         self._clients: dict[str, AsyncWebClient] = {}
         self._stream_ts: dict[str, str] = {}       # turn_id -> message ts
         self._buffer: dict[str, list[str]] = defaultdict(list)
+        self._status: dict[str, str] = {}          # turn_id -> current step
         self._last_edit: dict[str, float] = defaultdict(float)
         self._locks: dict[str, asyncio.Lock] = defaultdict(asyncio.Lock)
 
@@ -175,33 +176,63 @@ class SlackRenderer:
             self._clients[team_id] = AsyncWebClient(token=token)
         return self._clients[team_id]
 
+    def _rendered(self, key: str) -> str:
+        """What the turn's single message says right now: the answer so far,
+        and under it the step being worked on. The step is a footer, not a
+        message of its own — a thread is a conversation, and six posts about
+        one file write are not part of it. What the agent did belongs in the
+        Activity page, which keeps it."""
+        answer = "".join(self._buffer[key])
+        status = self._status.get(key)
+        if not status:
+            return answer
+        footer = f"_:hammer_and_wrench: {status}_"
+        return f"{answer}\n\n{footer}" if answer else footer
+
+    async def _render(self, turn: Turn, key: str, force: bool = False) -> None:
+        """Post or edit the turn's message. Caller holds the lock."""
+        if not force and time.monotonic() - self._last_edit[key] < 1.0:
+            return
+        text = self._rendered(key)
+        if not text:
+            return
+        self._last_edit[key] = time.monotonic()
+        client = await self.client_for(turn.slack_team)
+        if key in self._stream_ts:
+            await client.chat_update(channel=turn.slack_channel,
+                                     ts=self._stream_ts[key], text=text)
+        else:
+            res = await client.chat_postMessage(
+                channel=turn.slack_channel, thread_ts=turn.slack_thread_ts, text=text)
+            self._stream_ts[key] = res["ts"]
+
     async def stream_chunk(self, turn: Turn, chunk: str) -> None:
         key = str(turn.turn_id)
         async with self._locks[key]:
             self._buffer[key].append(chunk)
             # Slack rate limit friendly: edit at most ~1x/sec.
-            if time.monotonic() - self._last_edit[key] < 1.0:
-                return
-            self._last_edit[key] = time.monotonic()
-            text = "".join(self._buffer[key])
-            client = await self.client_for(turn.slack_team)
-            if key in self._stream_ts:
-                await client.chat_update(channel=turn.slack_channel,
-                                         ts=self._stream_ts[key], text=text)
-            else:
-                res = await client.chat_postMessage(
-                    channel=turn.slack_channel, thread_ts=turn.slack_thread_ts, text=text)
-                self._stream_ts[key] = res["ts"]
+            await self._render(turn, key)
+
+    async def set_status(self, turn: Turn, step: str) -> None:
+        """The step the agent is on. Repeats are dropped before they cost a
+        Slack call: a tool call and its updates carry the same title, and the
+        ones that carry none say nothing at all."""
+        step = (step or "").strip()
+        key = str(turn.turn_id)
+        if not step or step == "tool" or step == self._status.get(key):
+            return
+        async with self._locks[key]:
+            self._status[key] = step
+            await self._render(turn, key)
 
     async def flush(self, turn: Turn) -> None:
-        """Force-final edit when the task finishes."""
+        """Force-final edit when the task finishes: the answer stands alone,
+        with no step left hanging under it."""
         key = str(turn.turn_id)
         async with self._locks[key]:
+            self._status.pop(key, None)
             if key in self._stream_ts and self._buffer[key]:
-                client = await self.client_for(turn.slack_team)
-                await client.chat_update(channel=turn.slack_channel,
-                                         ts=self._stream_ts[key],
-                                         text="".join(self._buffer[key]))
+                await self._render(turn, key, force=True)
 
     async def post_status(self, turn: Turn, text: str) -> None:
         client = await self.client_for(turn.slack_team)
@@ -268,7 +299,8 @@ class SlackRenderer:
     def cleanup(self, turn: Turn) -> None:
         """Drop per-turn streaming state once the turn is finished."""
         key = str(turn.turn_id)
-        for store in (self._stream_ts, self._buffer, self._last_edit, self._locks):
+        for store in (self._stream_ts, self._buffer, self._status,
+                      self._last_edit, self._locks):
             store.pop(key, None)
 
     async def react(self, turn: Turn, name: str, add: bool = True) -> None:
@@ -544,10 +576,21 @@ def register_handlers(app: AsyncApp, renderer: SlackRenderer,
 
         # A DM is a task without ceremony: no mention needed, and nothing of
         # it goes into team memory — a private conversation is scoped to
-        # itself, and the channel archive belongs to the channel.
-        if event.get("channel_type") == "im":
+        # itself, and the channel archive belongs to the channel. A group DM
+        # is the same bargain: several people, still not a channel, so it is
+        # answered and not archived. In a group DM the bot must be addressed,
+        # otherwise it would answer people talking to each other.
+        channel_type = event.get("channel_type")
+        if channel_type == "im":
             await dispatch(event, say, context,
                            prompt=event.get("text", ""), channel_name="dm")
+            return
+        if channel_type == "mpim":
+            bot_id = (context.get("bot_user_id") or "")
+            if bot_id and f"<@{bot_id}>" not in (event.get("text") or ""):
+                return
+            await dispatch(event, say, context,
+                           prompt=event.get("text", ""), channel_name="group-dm")
             return
         team_id = context["team_id"]
         try:

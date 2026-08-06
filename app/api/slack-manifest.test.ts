@@ -38,11 +38,31 @@ function manifestBotScopes(): string[] {
   return [...block[1].matchAll(/^ {6}- (\S+)/gm)].map((m) => m[1]);
 }
 
+/** User scopes the manifest declares. Sign-in only by design. */
+function manifestUserScopes(): string[] {
+  const block = manifest.match(/\n {4}user:\n([\s\S]*?)\n {4}bot:/);
+  if (!block) throw new Error("user scopes not found in the manifest");
+  return [...block[1].matchAll(/^ {6}- (\S+)/gm)].map((m) => m[1]);
+}
+
 describe("production Slack manifest", () => {
   it("declares exactly the scopes the install flow requests", () => {
     expect([...manifestBotScopes()].sort()).toEqual(
       [...requestedScopes()].sort(),
     );
+  });
+
+  it("asks a human for sign-in and nothing else", () => {
+    // A user token can act as the person who granted it, which is the one
+    // thing this product must never do: the point of the thread is that an
+    // agent's action is visibly an agent's. Sign-in scopes carry no such
+    // power, and the install flow must not ask for a user grant at all.
+    expect([...manifestUserScopes()].sort()).toEqual([
+      "email",
+      "openid",
+      "profile",
+    ]);
+    expect(oauthSource).not.toContain("user_scope=");
   });
 
   it("keeps interactivity on — Approve/Deny/Stop are buttons", () => {
@@ -57,6 +77,7 @@ describe("production Slack manifest", () => {
       "message.channels",
       "message.groups",
       "message.im",
+      "message.mpim",
       "file_deleted",
     ]) {
       expect(manifest).toContain(`- ${event}`);

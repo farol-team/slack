@@ -27,25 +27,46 @@ oauth_config:
     - https://app.farol.team/api/slack/callback
     - https://app.farol.team/api/oauth/callback
   scopes:
-    # "Sign in with Slack" (OIDC) — the dashboard login.
     user:
+      # Sign-in only. The agent never acts as a human and never reads with
+      # a human's eyes: memory is scoped to the channel that asked, so a
+      # person-scoped grant would have nothing to attach to but risk.
       - openid
       - profile
       - email
     bot:
       - app_mentions:read
+      - assistant:write
+      - bookmarks:read
+      - bookmarks:write
+      - canvases:read
+      - canvases:write
       - channels:history
-      - channels:join     # the dashboard adds the bot without an /invite
+      - channels:join
       - channels:read
       - chat:write
-      - files:read        # screenshots and logs attached to the question
+      - chat:write.customize
+      - commands
+      - emoji:read
+      - files:read
+      - files:write
       - groups:history
       - groups:read
-      - im:history        # a DM to the bot is a task, no mention needed
+      - im:history
       - im:read
       - im:write
-      - reactions:write   # 👀 while the runner works, ✅ when it lands
-      - users:read        # resolve the mention author -> member (BYOA routing)
+      - mpim:history
+      - mpim:read
+      - mpim:write
+      - pins:read
+      - pins:write
+      - reactions:read
+      - reactions:write
+      - search:read.public
+      - team:read
+      - usergroups:read
+      - users.profile:read
+      - users:read
       - users:read.email
 settings:
   # Approve/Deny/Stop are buttons: without this, Slack delivers the click
@@ -61,6 +82,7 @@ settings:
       - message.channels
       - message.groups    # private channels are archived too
       - message.im
+      - message.mpim      # a group DM is a conversation, not an archive
       - file_deleted      # deleting in Slack removes the copy in memory
   org_deploy_enabled: false
   socket_mode_enabled: false

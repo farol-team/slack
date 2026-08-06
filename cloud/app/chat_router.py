@@ -275,7 +275,10 @@ class ChatRouter:
             # Slack-friendly streaming: edit one message as chunks accumulate.
             await slack.stream_chunk(turn, ev.text)
         elif ev.kind in (p.TurnEventKind.tool_call, p.TurnEventKind.tool_call_update):
-            await slack.post_status(turn, f":hammer_and_wrench: `{ev.text}`")
+            # A tool call and its updates share one title, and an update that
+            # changed only its status carries none. Both used to become their
+            # own Slack message: one file write cost six.
+            await slack.set_status(turn, ev.text)
         elif ev.kind == p.TurnEventKind.plan:
             await slack.post_status(turn, f":clipboard: plan:\n{ev.text}")
         elif ev.kind == p.TurnEventKind.permission_request:
