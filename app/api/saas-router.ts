@@ -471,7 +471,7 @@ export const chatSyncRouter = createRouter({
 /** All OV access goes through the cloud's internal API — the SaaS has
  *  no direct OpenViking route. */
 async function cloudMemoryFetch(path: string, body: unknown) {
-  const cloudUrl = (process.env.FAROL_CLOUD_URL ?? "").replace(/\/$/, "");
+  const cloudUrl = (process.env.OPENTAG_CLOUD_URL ?? "").replace(/\/$/, "");
   if (!cloudUrl || !INTERNAL_SECRET)
     throw new TRPCError({ code: "PRECONDITION_FAILED", message: "cloud not configured" });
   const res = await fetch(`${cloudUrl}${path}`, {
@@ -523,7 +523,7 @@ export const memoryRouter = createRouter({
         count: fileRows.length,
         bytes: fileRows.reduce((sum, r) => sum + (r.bytes ?? 0), 0),
       };
-      const cloudUrl = (process.env.FAROL_CLOUD_URL ?? "").replace(/\/$/, "");
+      const cloudUrl = (process.env.OPENTAG_CLOUD_URL ?? "").replace(/\/$/, "");
       if (!cloudUrl || !INTERNAL_SECRET) return null;
       try {
         const res = await fetch(`${cloudUrl}/internal/memory/stats`, {

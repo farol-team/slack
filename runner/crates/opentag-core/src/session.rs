@@ -284,7 +284,7 @@ impl SessionManager {
             return Ok(vec![]);
         }
         let token = task.memory.as_ref().map(|m| m.user_key.clone()).unwrap_or_default();
-        let dir = cwd.join(".farol").join("attachments");
+        let dir = cwd.join(".opentag").join("attachments");
         tokio::fs::create_dir_all(&dir).await?;
         let http = reqwest::Client::new();
         let mut saved = Vec::new();

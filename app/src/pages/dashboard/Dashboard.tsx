@@ -24,9 +24,9 @@ import {
 } from "lucide-react";
 
 const RELEASE_BASE =
-  "https://github.com/farol-team/slack/releases/latest/download";
+  "https://github.com/farol-team/opentag/releases/latest/download";
 const RUNNER_DOWNLOADS = {
-  mac: `${RELEASE_BASE}/farol-runner-macos.dmg`,
+  mac: `${RELEASE_BASE}/opentag-runner-macos.dmg`,
 };
 
 const ONLINE_WINDOW_MS = 2 * 60 * 1000;
@@ -110,8 +110,8 @@ export default function Dashboard() {
     overview?.channels.find((c) => c.slackChannelId === id)?.name ?? id;
 
   const runSnippet =
-    "Open the .dmg, drag Farol Runner to Applications,\nlaunch it and press “Connect to Slack”.";
-  const mentionSnippet = "@farol summarize what this team decided this week";
+    "Open the .dmg, drag OpenTag Runner to Applications,\nlaunch it and press “Connect to Slack”.";
+  const mentionSnippet = "@opentag summarize what this team decided this week";
 
   return (
     <div className="max-w-4xl space-y-8">
@@ -244,7 +244,7 @@ export default function Dashboard() {
                   ) : (
                     <>
                       <p className="text-sm text-muted-foreground">
-                        Install the Farol app into your Slack workspace. The
+                        Install the OpenTag app into your Slack workspace. The
                         bot starts remembering every channel it is invited to.
                       </p>
                       <Button
@@ -328,7 +328,7 @@ export default function Dashboard() {
                   </p>
                   <div className="flex items-start gap-2">
                     <pre className="bg-muted p-3 rounded-md text-xs flex-1 overflow-auto">
-                      {`/invite @farol\n${mentionSnippet}`}
+                      {`/invite @opentag\n${mentionSnippet}`}
                     </pre>
                     <Button
                       variant="ghost"

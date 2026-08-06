@@ -23,7 +23,7 @@ export const env = {
   /** Shared secret for SaaS <-> cloud internal calls. */
   internalApiSecret: process.env.INTERNAL_API_SECRET ?? "",
   /** Base URL of the cloud service (data plane). */
-  farolCloudUrl: (process.env.FAROL_CLOUD_URL ?? "").replace(/\/$/, ""),
+  opentagCloudUrl: (process.env.OPENTAG_CLOUD_URL ?? "").replace(/\/$/, ""),
   /** Emails (comma-separated) that get role "admin" on sign-in. */
   ownerEmails: (process.env.OWNER_EMAILS ?? "")
     .split(",")

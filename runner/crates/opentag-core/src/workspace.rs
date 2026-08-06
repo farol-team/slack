@@ -1,6 +1,6 @@
 //! Where an agent works on this machine.
 //!
-//! The root is `~/Farol`: where an agent spends its days is work, and work
+//! The root is `~/OpenTag`: where an agent spends its days is work, and work
 //! belongs in the open — visible in Finder, not buried in app-data like a
 //! cache. It stays out of `~/Documents` on purpose too: iCloud evicts files
 //! there, and an evicted file mid-turn is a corrupted working tree.
@@ -37,12 +37,12 @@ pub fn derive_path(root: &Path, workspace: &str, channel: &str) -> PathBuf {
     root.join(slugify(workspace)).join(slugify(channel))
 }
 
-/// The default root, `~/Farol`, or a relative fallback when there is no home
+/// The default root, `~/OpenTag`, or a relative fallback when there is no home
 /// directory to speak of (a container, a daemon with no HOME).
 pub fn default_root() -> PathBuf {
     match std::env::var_os("HOME") {
-        Some(home) if !home.is_empty() => PathBuf::from(home).join("Farol"),
-        _ => PathBuf::from("Farol"),
+        Some(home) if !home.is_empty() => PathBuf::from(home).join("OpenTag"),
+        _ => PathBuf::from("OpenTag"),
     }
 }
 
@@ -53,16 +53,35 @@ mod tests {
     #[test]
     fn each_workspace_and_channel_gets_its_own_directory() {
         let root = Path::new("/data");
-        assert_eq!(derive_path(root, "Farol", "dev"), PathBuf::from("/data/farol/dev"));
-        assert_ne!(derive_path(root, "Farol", "dev"), derive_path(root, "Farol", "ops"));
-        assert_ne!(derive_path(root, "Farol", "dev"), derive_path(root, "Acme", "dev"));
+        assert_eq!(derive_path(root, "OpenTag", "dev"), PathBuf::from("/data/opentag/dev"));
+        assert_ne!(derive_path(root, "OpenTag", "dev"), derive_path(root, "OpenTag", "ops"));
+        assert_ne!(derive_path(root, "OpenTag", "dev"), derive_path(root, "Acme", "dev"));
     }
 
     #[test]
     fn names_people_actually_use_become_paths() {
-        assert_eq!(slugify("Farol Team"), "farol-team");
+        assert_eq!(slugify("OpenTag Team"), "opentag-team");
         assert_eq!(slugify("#релизы 🚀"), "unnamed");
         assert_eq!(slugify("--Dev--Ops--"), "dev-ops");
         assert_eq!(slugify(""), "unnamed");
+    }
+
+    /// [S4] The work dir is under `~/OpenTag`, not under the old name — so
+    /// the path a person sees in Finder is `~/OpenTag/acme/dev`. That the
+    /// channel hangs off the root is already proved above against `/data`;
+    /// what is new here is the name of the root itself.
+    ///
+    /// HOME is read, never set: the variable is process-wide and the tests
+    /// run in parallel, so writing it here would race the others.
+    #[test]
+    fn s4_the_agent_works_under_opentag_in_the_home_directory() {
+        let root = default_root();
+        match std::env::var_os("HOME") {
+            Some(home) if !home.is_empty() => {
+                assert_eq!(root, PathBuf::from(home).join("OpenTag"));
+            }
+            // No home to speak of: the fallback is still the product name.
+            _ => assert_eq!(root, PathBuf::from("OpenTag")),
+        }
     }
 }

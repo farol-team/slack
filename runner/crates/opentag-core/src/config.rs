@@ -6,12 +6,12 @@ use directories::ProjectDirs;
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 
-const KEYRING_SERVICE: &str = "team.farol.runner";
+const KEYRING_SERVICE: &str = "team.farol.opentag";
 const KEYRING_USER: &str = "cloud-token";
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct RunnerConfig {
-    /// Cloud endpoint, e.g. "wss://api.farol.team/runner/v1".
+    /// Cloud endpoint, e.g. "wss://hooks.opentag.farol.team/runner/v1".
     pub cloud_url: String,
     /// SaaS control plane URL ("Connect with Slack" flow). A different service
     /// from cloud_url — do not conflate the two.
@@ -37,7 +37,7 @@ pub struct RunnerConfig {
 }
 
 fn default_saas_url() -> String {
-    "https://app.farol.team".into()
+    "https://opentag.farol.team".into()
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -50,7 +50,7 @@ pub struct AgentEntry {
 impl Default for RunnerConfig {
     fn default() -> Self {
         Self {
-            cloud_url: "wss://hooks.farol.team/runner/v1".into(),
+            cloud_url: "wss://hooks.opentag.farol.team/runner/v1".into(),
             saas_url: default_saas_url(),
             workspace_id: None,
             // The pinned ACP adapters; none of them ships with the runner, so
@@ -72,7 +72,7 @@ impl Default for RunnerConfig {
 
 impl RunnerConfig {
     fn config_path() -> Result<PathBuf> {
-        let dirs = ProjectDirs::from("team", "farol", "farol-runner")
+        let dirs = ProjectDirs::from("team", "farol", "opentag-runner")
             .context("cannot resolve config dir")?;
         Ok(dirs.config_dir().join("config.json"))
     }

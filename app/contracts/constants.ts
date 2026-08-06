@@ -1,5 +1,5 @@
 export const Session = {
-  cookieName: "farol_sid",
+  cookieName: "opentag_sid",
   maxAgeMs: 365 * 24 * 60 * 60 * 1000,
 } as const;
 

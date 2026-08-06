@@ -1,7 +1,7 @@
 {
   "tracker": {
     "provider": "github",
-    "repo": "farol-team/slack"
+    "repo": "farol-team/opentag"
   },
   "states": {
     "icebox": "flow:icebox",

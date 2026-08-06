@@ -1,10 +1,10 @@
-//! Farol Runner desktop: Tauri shell around farol-core.
+//! OpenTag Runner desktop: Tauri shell around opentag-core.
 //! Tray-first UX: the app lives in the tray, window shows status/config.
 
-use farol_core::cloud::run_connection_loop;
-use farol_core::connect::{self, PollOutcome};
-use farol_core::protocol::{CloudMessage, Hello};
-use farol_core::{RunnerConfig, SessionManager};
+use opentag_core::cloud::run_connection_loop;
+use opentag_core::connect::{self, PollOutcome};
+use opentag_core::protocol::{CloudMessage, Hello};
+use opentag_core::{RunnerConfig, SessionManager};
 use serde::Serialize;
 use std::sync::Arc;
 use tauri::menu::{Menu, MenuItem};
@@ -18,7 +18,7 @@ struct AppState {
     session_manager: RwLock<Option<Arc<SessionManager>>>,
     /// Handle on the live cloud loop, so installing an adapter can end it and
     /// hand the cloud a fresh `hello` with the new agent in it.
-    cloud: RwLock<Option<farol_core::cloud::CloudSender>>,
+    cloud: RwLock<Option<opentag_core::cloud::CloudSender>>,
     /// The token this session is connected with. Held here because keyring on
     /// macOS can fail a read straight after a write, and a restart that lost
     /// the token would drop a working runner offline.
@@ -46,7 +46,7 @@ impl Default for RunnerStatus {
             root: RunnerConfig::load()
                 .map(|c| c.root_dir.display().to_string())
                 .unwrap_or_default(),
-            version: match option_env!("FAROL_BUILD_SHA") {
+            version: match option_env!("OPENTAG_BUILD_SHA") {
                 Some(sha) => format!("{} ({})", env!("CARGO_PKG_VERSION"), &sha[..7.min(sha.len())]),
                 None => env!("CARGO_PKG_VERSION").to_string(),
             },
@@ -181,14 +181,14 @@ fn agents_prefix(app: &AppHandle) -> Result<std::path::PathBuf, String> {
 #[tauri::command]
 async fn list_agents(app: AppHandle) -> Result<Vec<AgentRow>, String> {
     let prefix = agents_prefix(&app)?;
-    Ok(farol_core::agents::BASELINE
+    Ok(opentag_core::agents::BASELINE
         .iter()
         .map(|p| AgentRow {
             name: p.name.into(),
             label: p.label.into(),
             package: p.package.into(),
             docs_url: p.docs_url.into(),
-            resolved: farol_core::agents::resolve(p.command, Some(&prefix))
+            resolved: opentag_core::agents::resolve(p.command, Some(&prefix))
                 .map(|path| path.display().to_string()),
         })
         .collect())
@@ -198,14 +198,14 @@ async fn list_agents(app: AppHandle) -> Result<Vec<AgentRow>, String> {
 /// binary that lands there. Nothing is installed until this is pressed.
 #[tauri::command]
 async fn install_agent(app: AppHandle, name: String) -> Result<AgentRow, String> {
-    let profile = farol_core::agents::profile_for(&name)
+    let profile = opentag_core::agents::profile_for(&name)
         .ok_or_else(|| format!("unknown agent: {name}"))?;
     let prefix = agents_prefix(&app)?;
 
     // A .app launched from Finder has a bare PATH — npm lives in Homebrew or
     // nvm, neither of which is in it. Ask the login shell where things are.
-    let path = farol_core::agents::spawn_path(Some(&prefix));
-    let npm = farol_core::agents::resolve("npm", None)
+    let path = opentag_core::agents::spawn_path(Some(&prefix));
+    let npm = opentag_core::agents::resolve("npm", None)
         .ok_or_else(|| "npm was not found on this machine — install Node.js first".to_string())?;
     let output = tokio::process::Command::new(&npm)
         .args(["install", "-g", "--prefix"])
@@ -223,7 +223,7 @@ async fn install_agent(app: AppHandle, name: String) -> Result<AgentRow, String>
             .to_string());
     }
 
-    let resolved = farol_core::agents::resolve(profile.command, Some(&prefix))
+    let resolved = opentag_core::agents::resolve(profile.command, Some(&prefix))
         .ok_or_else(|| format!("{} installed but {} not found", profile.package, profile.command))?;
 
     // Record the absolute path: the runner spawns the adapter itself and its
@@ -236,7 +236,7 @@ async fn install_agent(app: AppHandle, name: String) -> Result<AgentRow, String>
             entry.command = command.clone();
             entry.args = args;
         }
-        None => cfg.agents.push(farol_core::config::AgentEntry {
+        None => cfg.agents.push(opentag_core::config::AgentEntry {
             name: profile.name.into(),
             command: command.clone(),
             args,
@@ -287,7 +287,7 @@ async fn start_cloud(app: AppHandle, token: Option<String>) {
     // macOS can lose a write straight after it, and a silent early return here
     // is exactly what "I pressed connect and nothing happened" looks like.
     let token = match token
-        .or_else(|| std::env::var("FAROL_RUNNER_TOKEN").ok())
+        .or_else(|| std::env::var("OPENTAG_RUNNER_TOKEN").ok())
         .or_else(|| RunnerConfig::token().ok().flatten())
     {
         Some(t) => t,
@@ -409,23 +409,23 @@ pub fn run() {
                 if let Ok(file) = std::fs::OpenOptions::new()
                     .create(true)
                     .append(true)
-                    .open(dir.join("farol-runner.log"))
+                    .open(dir.join("opentag-runner.log"))
                 {
                     let _ = tracing_subscriber::fmt()
                         .with_ansi(false)
                         .with_writer(move || file.try_clone().expect("log handle"))
                         .try_init();
-                    tracing::info!("log file: {}", dir.join("farol-runner.log").display());
+                    tracing::info!("log file: {}", dir.join("opentag-runner.log").display());
                 }
             }
 
             // Tray: Show / Quit
-            let show = MenuItem::with_id(app, "show", "Open Farol Runner", true, None::<&str>)?;
+            let show = MenuItem::with_id(app, "show", "Open OpenTag Runner", true, None::<&str>)?;
             let quit = MenuItem::with_id(app, "quit", "Quit", true, None::<&str>)?;
             let menu = Menu::with_items(app, &[&show, &quit])?;
             TrayIconBuilder::new()
                 .menu(&menu)
-                .tooltip("Farol Runner")
+                .tooltip("OpenTag Runner")
                 .on_menu_event(|app, event| match event.id.as_ref() {
                     "show" => {
                         if let Some(w) = app.get_webview_window("main") {

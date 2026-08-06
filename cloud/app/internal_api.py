@@ -1,5 +1,5 @@
 """The ops surface: health and the SaaS <-> cloud internal API
-(shared-secret guarded). Not exposed on hooks.farol.team."""
+(shared-secret guarded). Not exposed on hooks.opentag.farol.team."""
 
 from __future__ import annotations
 
@@ -102,7 +102,7 @@ async def memory_search(request: Request):
         raise HTTPException(status_code=400, detail="team_id and query required")
     account = await deps.resolve_ov_account(team_id)
     results = await deps.ov_client.find(
-        account, "farol-dashboard", query,
+        account, "opentag-dashboard", query,
         target_uri=body.get("scope") or "viking://resources/",
         limit=int(body.get("limit") or 10),
     )
@@ -125,7 +125,7 @@ async def memory_stats(request: Request):
     total_bytes = 0
     last_modified: str | None = None
     try:
-        roots = await deps.ov_client.ls(account, "farol-dashboard",
+        roots = await deps.ov_client.ls(account, "opentag-dashboard",
                                         "viking://resources/slack/")
     except Exception:
         roots = []
@@ -134,7 +134,7 @@ async def memory_stats(request: Request):
             continue
         uri = entry["uri"]
         try:
-            files = await deps.ov_client.ls(account, "farol-dashboard", uri)
+            files = await deps.ov_client.ls(account, "opentag-dashboard", uri)
         except Exception:
             continue
         docs = [f for f in files if not f.get("isDir")]

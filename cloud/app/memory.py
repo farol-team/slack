@@ -20,7 +20,7 @@ import httpx
 log = logging.getLogger("openviking")
 
 # Service identity for writes not attributable to a member.
-INGEST_USER = "farol-ingest"
+INGEST_USER = "opentag-ingest"
 
 
 class OpenVikingClient:
@@ -42,7 +42,7 @@ class OpenVikingClient:
     # ---------- provisioning (Admin API, root only) ----------
 
     async def create_account(self, account_id: str,
-                             admin_user_id: str = "farol-admin") -> dict:
+                             admin_user_id: str = "opentag-admin") -> dict:
         """Create the tenant account when a workspace installs the Slack app.
         Idempotent for callers: an already-existing account is not an error."""
         res = await self._client.post("/api/v1/admin/accounts", json={

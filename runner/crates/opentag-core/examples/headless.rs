@@ -1,18 +1,18 @@
 //! Headless runner without the Tauri UI: for dev debugging and tests.
 //!
 //! Config is the standard `RunnerConfig::load()` (config.json in the platform config dir),
-//! the token comes from the `FAROL_RUNNER_TOKEN` env var (falling back to the OS keychain).
+//! the token comes from the `OPENTAG_RUNNER_TOKEN` env var (falling back to the OS keychain).
 //! With no token at all, the "Connect with Slack" flow runs instead: it prints an
 //! approval URL, waits for the browser approval, and stores the issued token.
 //!
 //! ```bash
-//! FAROL_RUNNER_TOKEN=frl_... cargo run -p farol-core --example headless
+//! OPENTAG_RUNNER_TOKEN=frl_... cargo run -p opentag-core --example headless
 //! ```
 
-use farol_core::cloud::{run_connection_loop, CloudSender};
-use farol_core::connect::{self, PollOutcome};
-use farol_core::protocol::{CloudMessage, Hello};
-use farol_core::{RunnerConfig, SessionManager};
+use opentag_core::cloud::{run_connection_loop, CloudSender};
+use opentag_core::connect::{self, PollOutcome};
+use opentag_core::protocol::{CloudMessage, Hello};
+use opentag_core::{RunnerConfig, SessionManager};
 use std::sync::Arc;
 use tokio::sync::Mutex;
 use tracing::{error, info};
@@ -22,15 +22,15 @@ async fn main() -> anyhow::Result<()> {
     tracing_subscriber::fmt::init();
 
     let mut cfg = RunnerConfig::load()?;
-    // FAROL_ALLOWED_CWDS (colon-separated) adds folders beyond the root; the
-    // root itself (~/Farol by default) is always allowed.
-    if let Ok(list) = std::env::var("FAROL_ALLOWED_CWDS") {
+    // OPENTAG_ALLOWED_CWDS (colon-separated) adds folders beyond the root; the
+    // root itself (~/OpenTag by default) is always allowed.
+    if let Ok(list) = std::env::var("OPENTAG_ALLOWED_CWDS") {
         cfg.allowed_cwds = std::env::split_paths(&list).collect();
     }
     // No fallback to the home directory: an allowlist that quietly includes
     // everything a person owns is not one. Work lands under the root instead,
     // in a directory the runner creates for the channel it came from.
-    let token = match std::env::var("FAROL_RUNNER_TOKEN")
+    let token = match std::env::var("OPENTAG_RUNNER_TOKEN")
         .ok()
         .or_else(|| RunnerConfig::token().ok().flatten())
     {

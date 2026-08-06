@@ -1,4 +1,4 @@
-# Builds the Farol Runner for macOS on runner-v* tags: the desktop app as a
+# Builds the OpenTag Runner for macOS on runner-v* tags: the desktop app as a
 # signed, notarized .dmg, plus the headless binaries for servers and CI.
 # Linux is parked — see the build matrix.
 #
@@ -29,12 +29,12 @@ jobs:
         include:
           - os: macos-14
             target: aarch64-apple-darwin
-            asset: farol-runner-darwin-arm64
+            asset: opentag-runner-darwin-arm64
           # x64 cross-compiles on the arm64 runner (one Apple SDK covers both);
           # macos-13 Intel runners have hour-long queues on the free tier.
           - os: macos-14
             target: x86_64-apple-darwin
-            asset: farol-runner-darwin-x64
+            asset: opentag-runner-darwin-x64
           # Linux is parked while the macOS app is being debugged — put the
           # ubuntu-22.04 / x86_64-unknown-linux-gnu entry back to ship it again.
     runs-on: ${{ matrix.os }}
@@ -53,7 +53,7 @@ jobs:
         with:
           workspaces: runner
       - name: Build
-        run: cargo build --release -p farol-core --example headless --target ${{ matrix.target }}
+        run: cargo build --release -p opentag-core --example headless --target ${{ matrix.target }}
       - name: Stage asset
         run: cp target/${{ matrix.target }}/release/examples/headless ${{ matrix.asset }}
       - name: Import signing certificate
@@ -169,7 +169,7 @@ jobs:
       - name: Build .dmg (universal)
         env:
           # Shown in the app footer: the tag gets moved, the commit does not.
-          FAROL_BUILD_SHA: ${{ github.sha }}
+          OPENTAG_BUILD_SHA: ${{ github.sha }}
           # Signs the updater artifact; without it the bundler emits none and
           # the feed below would advertise something no app would accept.
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
@@ -204,16 +204,16 @@ jobs:
           dmg=$(ls "$bundle"/dmg/*.dmg | head -1)
           [ -n "$dmg" ] || { echo "no .dmg produced"; exit 1; }
           # Stable names so releases/latest/download/... keeps working.
-          cp "$dmg" farol-runner-macos.dmg
+          cp "$dmg" opentag-runner-macos.dmg
 
           # The updater takes the tarball, not the disk image, and refuses one
           # whose signature it cannot verify — so both ship or neither does.
           tar=$(ls "$bundle"/macos/*.app.tar.gz | head -1)
           sig=$(ls "$bundle"/macos/*.app.tar.gz.sig | head -1)
           [ -n "$tar" ] && [ -n "$sig" ] || { echo "no updater artifact"; exit 1; }
-          cp "$tar" farol-runner-macos.app.tar.gz
+          cp "$tar" opentag-runner-macos.app.tar.gz
 
-          url="https://github.com/${GITHUB_REPOSITORY}/releases/latest/download/farol-runner-macos.app.tar.gz"
+          url="https://github.com/${GITHUB_REPOSITORY}/releases/latest/download/opentag-runner-macos.app.tar.gz"
           python3 - "$APP_VERSION" "$(cat "$sig")" "$url" > latest.json <<'PY'
           import json, sys, datetime
           version, signature, url = sys.argv[1], sys.argv[2], sys.argv[3]
@@ -222,7 +222,7 @@ jobs:
           platform = {"signature": signature, "url": url}
           print(json.dumps({
               "version": version,
-              "notes": "Farol Runner " + version,
+              "notes": "OpenTag Runner " + version,
               "pub_date": datetime.datetime.now(datetime.UTC)
                   .isoformat(timespec="seconds").replace("+00:00", "Z"),
               "platforms": {
@@ -234,10 +234,10 @@ jobs:
           cat latest.json
       - uses: actions/upload-artifact@v4
         with:
-          name: farol-runner-macos
+          name: opentag-runner-macos
           path: |
-            runner/apps/desktop/farol-runner-macos.dmg
-            runner/apps/desktop/farol-runner-macos.app.tar.gz
+            runner/apps/desktop/opentag-runner-macos.dmg
+            runner/apps/desktop/opentag-runner-macos.app.tar.gz
             runner/apps/desktop/latest.json
           if-no-files-found: error
 
@@ -252,10 +252,10 @@ jobs:
           path: dist
       - uses: softprops/action-gh-release@v2
         with:
-          name: Farol Runner ${{ github.ref_name }}
+          name: OpenTag Runner ${{ github.ref_name }}
           files: dist/*
           body: |
-            **macOS** — download `farol-runner-macos.dmg`, drag Farol Runner to
+            **macOS** — download `opentag-runner-macos.dmg`, drag OpenTag Runner to
             Applications and launch it. Signed and notarized, so it opens
             without Gatekeeper warnings. Installed copies update themselves
             from `latest.json` in this release and apply it on the next launch.

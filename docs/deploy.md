@@ -1,8 +1,14 @@
-# Deploy — Farol SaaS (`app/`)
+# Deploy — OpenTag SaaS (`app/`)
 
 The desktop runner ships on its own track — see `release.md`.
 
 Production runs in **Yandex Cloud**, folder **workroom** (`b1gp4vl5os7qjl9m06l6`).
+
+The resource names below are the live ones and predate the rename to OpenTag.
+They are identifiers, not brand copy: renaming them here would describe
+infrastructure that does not exist. Renaming them for real is a separate,
+stateful operation (a database and role rename, a registry repository move, a
+data move under `/var/lib`) and is deliberately not part of the rename change.
 
 | Piece | Value |
 |---|---|
@@ -54,7 +60,7 @@ const c=new Client({connectionString:process.env.DATABASE_URL,ssl:{rejectUnautho
 | Static IP | `84.201.134.73` (address `e9bumepemrvpr4mjsvnn`); cloud on `:8000`, plain HTTP for now |
 | Services | `cloud` (image `cr.yandex/crpvie6a47kkgl03v9fm/farol-cloud:<git-sha>`) + `openviking` (ghcr, trusted mode, state in `/var/lib/farol/ovdata`) |
 | Health | `http://84.201.134.73:8000/healthz` → `{"ok":true,"runners":N,"turns":N}` |
-| SaaS link | SaaS revision carries `FAROL_CLOUD_URL=http://84.201.134.73:8000`; both share `INTERNAL_API_SECRET` |
+| SaaS link | SaaS revision carries `OPENTAG_CLOUD_URL=http://84.201.134.73:8000`; both share `INTERNAL_API_SECRET` |
 
 Redeploy cloud: build/push the image (see `cloud/Dockerfile`), update the
 `docker-compose` metadata key (`yc compute instance update-metadata`) or just
@@ -87,7 +93,7 @@ metadata.
   after the key is fixed — `find` returns nothing for it. Reindex per channel
   directory as the account admin (`POST /api/v1/content/reindex`, mode
   `semantic_and_vectors`, `uri` = the directory; a single-file uri 500s).
-- ~~No TLS on the cloud VM~~ — Caddy fronts it: `https://hooks.farol.team`
+- ~~No TLS on the cloud VM~~ — Caddy fronts it: `https://hooks.opentag.farol.team`
   terminates TLS and proxies only `/slack/events`, `/memory/mcp*`,
   `/runner/v1` and `/internal/*`; the cloud container publishes no host port.
 - Custom domain: the gateway URL is machine-generated; attach a real domain via

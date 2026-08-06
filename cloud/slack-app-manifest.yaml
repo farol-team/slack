@@ -1,13 +1,13 @@
-# Slack App Manifest for Farol Cloud (dev).
+# Slack App Manifest for OpenTag Cloud (dev).
 # Import: https://api.slack.com/apps → Create New App → From a manifest → paste this YAML.
 # IMPORTANT: once the tunnel is up (step 3), replace request_url with
 #   https://<your-ngrok-host>/slack/events
 display_information:
-  name: farol-dev-bot
-  description: Farol (dev)
+  name: opentag-dev-bot
+  description: OpenTag (dev)
 features:
   bot_user:
-    display_name: farol-dev-bot
+    display_name: opentag-dev-bot
     always_online: true
 oauth_config:
   # A manifest replaces the whole config: without these two the dashboard

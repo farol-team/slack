@@ -221,7 +221,7 @@ export const slackOauthStates = pgTable("slack_oauth_states", {
 });
 export type SlackOauthState = typeof slackOauthStates.$inferSelect;
 
-/** Browser-handoff codes for `farol runner connect`: the desktop runner
+/** Browser-handoff codes for `opentag runner connect`: the desktop runner
  *  polls until a logged-in user approves the code in the dashboard. */
 export const runnerConnectCodes = pgTable("runner_connect_codes", {
   id: serial("id").primaryKey(),
