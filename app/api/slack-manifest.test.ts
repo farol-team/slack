@@ -111,7 +111,7 @@ describe("production Slack manifest", () => {
  * so a stray old name fails the suite instead of waiting for a human's eye.
  *
  * This file is read by its own grep, so it may only spell the old name in the
- * two forms the rename keeps; where a pattern has to match the old name, it is
+ * forms the rename keeps; where a pattern has to match the old name, it is
  * written so that it does not contain it (the `grep [f]oo` idiom).
  */
 
@@ -121,9 +121,37 @@ function read(relative: string): string {
   return readFileSync(path, "utf8");
 }
 
-/** Everything the rename keeps: the org path and the parent domain. One
- *  pattern covers both — and strips itself out of this file. */
-const KEPT = /farol.team/gi;
+/**
+ * Hosts the rename is allowed to leave behind: the parent domain itself and
+ * the two subdomains this product moves to. A host under the parent domain is
+ * NOT blessed wholesale — `app.` and `hooks.` without `opentag.` are the dead
+ * ones, and a rename that leaves them behind is the rename not happening.
+ */
+const KEPT_HOSTS = new Set([
+  "farol.team",
+  "opentag.farol.team",
+  "hooks.opentag.farol.team",
+]);
+
+/** Remove every form of the old name the rename keeps, so that whatever
+ *  survives is a leftover. */
+function stripKeptNames(line: string): string {
+  return (
+    line
+      // the GitHub org path, which is not moving
+      .replace(/f[a]rol-team/gi, "")
+      // reverse DNS of a host under the parent domain — the keychain service
+      // and the bundle identifier read the target host backwards
+      .replace(/team\.f[a]rol\.[a-z0-9-]+/gi, "")
+      // ...and the same identifier split into the qualifier, organization and
+      // application that the directories crate asks for
+      .replace(/"team",\s*"f[a]rol"/gi, "")
+      // a host under the parent domain, kept only if it is one of ours
+      .replace(/[a-z0-9.-]*f[a]rol\.team/gi, (host) =>
+        KEPT_HOSTS.has(host.toLowerCase()) ? "" : host,
+      )
+  );
+}
 
 /** The grep from the plan's `## Tests`, minus history and the synced kit. */
 const GUARDED_GREP = [
@@ -158,15 +186,115 @@ function guardedGrep(): string[] {
 }
 
 describe("the OpenTag rename", () => {
-  it("[S1] leaves only the farol-team org path and the farol.team domain", () => {
-    // The env-var family lives or dies here: a half-swept OPENTAG_* rename
-    // leaves the old variable name in a file this grep reads.
+  it("[S1] leaves only the org path, the parent domain and its reverse DNS", () => {
     const hits = guardedGrep();
     // A grep that matched nothing at all would pass the filter below for the
     // wrong reason — the kept forms are still in the tree by design.
     expect(hits.length).toBeGreaterThan(0);
-    const survivors = hits.filter((line) => /f[a]rol/i.test(line.replace(KEPT, "")));
+    const survivors = hits.filter((line) => /f[a]rol/i.test(stripKeptNames(line)));
     expect(survivors).toEqual([]);
+  });
+
+  // The grep above says no old name survives. It cannot say the new names
+  // agree with each other, and an env var is renamed in two files or not at
+  // all: the deploy is where a half-swept family surfaces, long after every
+  // suite went green. So each family below is pinned at its declaration and
+  // at the code that reads it, the way [S5] pins the handshake headers.
+
+  it("[S1] reads in cloud/ exactly the env vars cloud/ declares", () => {
+    const config = read("cloud/app/config.py");
+    const example = read("cloud/.env.example");
+    const compose = read("cloud/docker-compose.yml");
+
+    // Required means no default: startup dies without it, so both the
+    // template a person copies and the compose file must carry it.
+    const required = [...config.matchAll(/os\.environ\["([A-Z0-9_]+)"\]/g)]
+      .map((m) => m[1])
+      .sort();
+    expect(required).toEqual([
+      "INTERNAL_API_SECRET",
+      "OPENTAG_CLOUD_PUBLIC_URL",
+      "OPENTAG_SAAS_URL",
+      "OPENVIKING_ROOT_KEY",
+      "SLACK_SIGNING_SECRET",
+    ]);
+
+    const declared = new Set(
+      [...example.matchAll(/^([A-Z0-9_]+)=/gm)].map((m) => m[1]),
+    );
+    const passedThrough = new Set(
+      [...compose.matchAll(/^ {6}([A-Z0-9_]+): /gm)].map((m) => m[1]),
+    );
+    for (const name of required) {
+      expect(declared.has(name), `${name} missing from cloud/.env.example`).toBe(
+        true,
+      );
+      expect(
+        passedThrough.has(name),
+        `${name} missing from cloud/docker-compose.yml`,
+      ).toBe(true);
+    }
+  });
+
+  it("[S1] reads in app/ exactly the env vars app/.env.example declares", () => {
+    const envTs = read("app/api/lib/env.ts");
+    const example = read("app/.env.example");
+
+    const cloudUrl = envTs.match(/(\w+): \(process\.env\.(\w+) \?\? ""\)/);
+    expect(cloudUrl, "env.ts must expose the cloud service URL").not.toBeNull();
+    expect(cloudUrl![1]).toBe("opentagCloudUrl");
+    expect(cloudUrl![2]).toBe("OPENTAG_CLOUD_URL");
+
+    const declared = new Set(
+      [...example.matchAll(/^([A-Z0-9_]+)=/gm)].map((m) => m[1]),
+    );
+    const consumed = [
+      ...[...envTs.matchAll(/required\("([A-Z0-9_]+)"\)/g)].map((m) => m[1]),
+      ...[...envTs.matchAll(/process\.env\.([A-Z0-9_]+)/g)].map((m) => m[1]),
+    ]
+      // NODE_ENV is the runtime's, not this app's; nothing declares it.
+      .filter((name) => name !== "NODE_ENV");
+    expect(consumed.length).toBeGreaterThan(0);
+    for (const name of new Set(consumed)) {
+      expect(declared.has(name), `${name} missing from app/.env.example`).toBe(
+        true,
+      );
+    }
+  });
+
+  it("[S1] tells a person to export the env vars the runner reads", () => {
+    const runners = read("app/src/pages/dashboard/Runners.tsx");
+    const sources = [
+      read("runner/crates/opentag-core/examples/headless.rs"),
+      read("runner/apps/desktop/src-tauri/src/lib.rs"),
+    ].join("\n");
+
+    // Everything the runner reads from the environment that is its own —
+    // SHELL, HOME, PATH and HOSTNAME belong to the OS.
+    const os = new Set(["SHELL", "HOME", "PATH", "HOSTNAME"]);
+    const reads = new Set(
+      [
+        ...[...sources.matchAll(/env::var(?:_os)?\("([A-Z0-9_]+)"\)/g)],
+        ...[...sources.matchAll(/option_env!\("([A-Z0-9_]+)"\)/g)],
+      ]
+        .map((m) => m[1])
+        .filter((name) => !os.has(name)),
+    );
+    expect([...reads].sort()).toEqual([
+      "OPENTAG_ALLOWED_CWDS",
+      "OPENTAG_BUILD_SHA",
+      "OPENTAG_RUNNER_TOKEN",
+    ]);
+
+    // The dashboard hands out a copy-paste snippet; every variable it exports
+    // has to be one the runner actually looks at.
+    const exported = [...runners.matchAll(/export ([A-Z0-9_]+)=/g)].map(
+      (m) => m[1],
+    );
+    expect(exported.length).toBeGreaterThan(0);
+    for (const name of new Set(exported)) {
+      expect(reads.has(name), `the runner never reads ${name}`).toBe(true);
+    }
   });
 
   it("[S3] builds one crate named opentag-core, and every use site names it", () => {
@@ -221,6 +349,27 @@ describe("the OpenTag rename", () => {
     expect([...received].sort()).toEqual([...sent].sort());
   });
 
+  it("[S5] dials the OpenTag hosts, and no host under the old name", () => {
+    // The connection the runner opens is the one thing a rename can leave
+    // pointing at a dead name and still compile, still type-check, still
+    // pass every grep that blesses the parent domain.
+    const configRs = read("runner/crates/opentag-core/src/config.rs");
+    const hosts = [
+      ...configRs.matchAll(/(?:wss|https):\/\/([a-z0-9.-]+)/g),
+    ].map((m) => m[1]);
+    expect(hosts.length).toBeGreaterThan(0);
+    expect([...new Set(hosts)].sort()).toEqual([
+      "hooks.opentag.farol.team",
+      "opentag.farol.team",
+    ]);
+    expect(configRs).toContain('"wss://hooks.opentag.farol.team/runner/v1"');
+
+    // The SaaS the runner is sent to sign in at is the SaaS Slack redirects
+    // to — one host, named in two repositories' worth of artefacts.
+    expect(configRs).toContain('"https://opentag.farol.team"');
+    expect(manifest).toContain("https://opentag.farol.team/api/oauth/callback");
+  });
+
   it("[S6] publishes, updates from and offers for download the same assets", () => {
     const workflow = read(".github/workflows/runner-release.yml");
     const runners = read("app/src/pages/dashboard/Runners.tsx");
@@ -241,8 +390,11 @@ describe("the OpenTag rename", () => {
     expect(workflow).toContain(`cp "$dmg" ${dmg}`);
     expect(workflow).toContain("opentag-runner-macos.app.tar.gz");
 
-    // ...and both point at the repository the tracker calls this project.
-    const repo = tracker.tracker.repo;
+    // ...and both point at the repository this project becomes. Pinned as a
+    // literal, not read back from the tracker: deriving the expectation from
+    // a file in the same rename would bless leaving all three unrenamed.
+    const repo = "farol-team/opentag";
+    expect(tracker.tracker.repo).toBe(repo);
     const base = `https://github.com/${repo}/releases/latest/download`;
     expect(tauri.plugins.updater.endpoints).toEqual([`${base}/latest.json`]);
     expect(runners).toContain(base);
