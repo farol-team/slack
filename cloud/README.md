@@ -1,8 +1,8 @@
-# Farol Cloud — cloud side (Task Router + Slack + OpenViking)
+# OpenTag Cloud — cloud side (Task Router + Slack + OpenViking)
 
-Server side of the "Farol" service. Companion project to
+Server side of the "OpenTag" service. Companion project to
 [`runner`](../runner) — the thin Rust + Tauri client.
-The exchange protocol mirrors `runner/crates/farol-core/src/protocol.rs`.
+The exchange protocol mirrors `runner/crates/opentag-core/src/protocol.rs`.
 
 ## Components
 
@@ -23,7 +23,7 @@ app/
 @app_mention in a thread (opens a Chat; replies are follow-up turns)
   → ChatRouter.start_turn() → AssignTurn (WS) → the author's own runner (BYOA)
   → runner spawns the ACP adapter in the folder it derives for that channel
-    (~/Farol/<workspace>/<channel>, checked against the allowlist on the client)
+    (~/OpenTag/<workspace>/<channel>, checked against the allowlist on the client)
   → TurnEvents stream back:
       agent_message_chunk → chat_update of a single message (≤1 edit/sec, rate-limit safe)
       tool_call / plan    → status replies in the thread
@@ -65,9 +65,9 @@ on every Slack event it resolves the bot token by `team_id` via
 `slack.installationByTeam` (tRPC, protected by the `x-internal-secret` header).
 
 Variables:
-- `FAROL_SAAS_URL` + `INTERNAL_API_SECRET` — link to the SaaS (required; there is
+- `OPENTAG_SAAS_URL` + `INTERNAL_API_SECRET` — link to the SaaS (required; there is
   no single-workspace fallback).
-- `FAROL_CLOUD_PUBLIC_URL` — public base URL of this service; agents reach the
+- `OPENTAG_CLOUD_PUBLIC_URL` — public base URL of this service; agents reach the
   memory gateway at `…/memory/mcp` (point it at your tunnel in dev).
 
 Slack app: scopes `app_mentions:read, channels:read, channels:history,

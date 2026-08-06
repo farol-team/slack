@@ -30,7 +30,7 @@ async def touch_runner(runner) -> None:
     try:
         async with httpx.AsyncClient(timeout=10) as client:
             await client.post(
-                f"{config.FAROL_SAAS_URL}/api/trpc/runner.touch",
+                f"{config.OPENTAG_SAAS_URL}/api/trpc/runner.touch",
                 json={"json": {"runnerId": runner.runner_id,
                                "secret": config.INTERNAL_API_SECRET}},
                 headers={"x-internal-secret": config.INTERNAL_API_SECRET},
@@ -60,8 +60,8 @@ async def runner_ws(ws: WebSocket):
     # The handshake announces the client before it authenticates: a runner
     # rejected for a bad token still tells us which version and OS dialed in,
     # which is the whole question when a release starts failing to connect.
-    hs_version = ws.headers.get("x-farol-runner-version", "")
-    hs_os = ws.headers.get("x-farol-runner-os", "")
+    hs_version = ws.headers.get("x-opentag-runner-version", "")
+    hs_os = ws.headers.get("x-opentag-runner-os", "")
     log.info("runner dialed in: version=%s os=%s ua=%s",
              hs_version or "?", hs_os or "?",
              ws.headers.get("user-agent", "?"))

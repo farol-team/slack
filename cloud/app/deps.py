@@ -14,10 +14,10 @@ from .slack_app import (IngestionBuffer, SlackRenderer, create_bolt,
                         make_member_resolver, register_handlers)
 
 ov_client = OpenVikingClient(config.OPENVIKING_URL, config.OPENVIKING_ROOT_KEY)
-authorize_fn = make_authorize(config.FAROL_SAAS_URL, config.INTERNAL_API_SECRET)
-resolve_installation = make_installation_resolver(config.FAROL_SAAS_URL,
+authorize_fn = make_authorize(config.OPENTAG_SAAS_URL, config.INTERNAL_API_SECRET)
+resolve_installation = make_installation_resolver(config.OPENTAG_SAAS_URL,
                                                   config.INTERNAL_API_SECRET)
-resolve_member = make_member_resolver(config.FAROL_SAAS_URL,
+resolve_member = make_member_resolver(config.OPENTAG_SAAS_URL,
                                       config.INTERNAL_API_SECRET,
                                       resolve_installation)
 
@@ -40,7 +40,7 @@ def build_memory(account: str, user_key: str, channel: str) -> p.MemoryConfig:
     token = mint_task_token(
         config.INTERNAL_API_SECRET, account, user_key,
         prefixes=[f"viking://resources/slack/{channel}/"])
-    return p.MemoryConfig(mcp_url=f"{config.FAROL_CLOUD_PUBLIC_URL}/memory/mcp",
+    return p.MemoryConfig(mcp_url=f"{config.OPENTAG_CLOUD_PUBLIC_URL}/memory/mcp",
                           user_key=token)
 
 
