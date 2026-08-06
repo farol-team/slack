@@ -8,7 +8,6 @@ from slack_bolt.adapter.fastapi.async_handler import AsyncSlackRequestHandler
 from . import config
 from . import protocol as p
 from .gateway import mint_task_token
-from .importer import ImportManager
 from .memory import OpenVikingClient
 from .slack_app import (IngestionBuffer, SlackRenderer, create_bolt,
                         make_authorize, make_installation_resolver,
@@ -33,7 +32,6 @@ async def resolve_ov_account(team_id: str) -> str:
 
 renderer = SlackRenderer(resolve_bot_token)
 ingestion = IngestionBuffer(ov_client)
-importer = ImportManager(ov_client, resolve_bot_token, resolve_ov_account)
 
 
 def build_memory(account: str, user_key: str, channel: str) -> p.MemoryConfig:

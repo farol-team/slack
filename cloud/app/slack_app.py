@@ -333,7 +333,7 @@ class IngestionBuffer:
             log.exception("file download failed: %s", name)
             return None
 
-        # The Slack file id makes the name unique: the importer keys the
+        # The Slack file id makes the name unique: OpenViking keys the
         # resource off the file name, and two `design.pdf` from two channels
         # must not collide in one flat namespace.
         file_id = f.get("id") or re.sub(r"[^A-Za-z0-9]+", "", name)[:12]

@@ -5,7 +5,6 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
-import { Progress } from "@/components/ui/progress";
 import {
   Select,
   SelectContent,
@@ -67,16 +66,6 @@ export default function Dashboard() {
   const { data: memStats } = trpc.memory.stats.useQuery(
     { workspaceId: (sel.selected?.id ?? 0) },
     { enabled: !!sel.selected && !!overview?.workspace.slackTeamId },
-  );
-  const { data: importStatus } = trpc.slack.importStatus.useQuery(
-    { workspaceId: (sel.selected?.id ?? 0) },
-    {
-      enabled: !!sel.selected && !!overview?.workspace.slackTeamId,
-      refetchInterval: (q) =>
-        (q.state.data as { state?: string } | undefined)?.state === "running"
-          ? 5000
-          : false,
-    },
   );
   const { data: channelList } = trpc.slack.channels.useQuery(
     { workspaceId: sel.selected?.id ?? 0 },
@@ -358,44 +347,6 @@ export default function Dashboard() {
               </div>
             </CardContent>
           </Card>
-
-          {/* ---------- History import progress ---------- */}
-          {importStatus &&
-            (importStatus as { state?: string }).state === "running" && (
-              <Card>
-                <CardHeader>
-                  <CardTitle>Importing Slack history</CardTitle>
-                </CardHeader>
-                <CardContent className="space-y-3">
-                  {(() => {
-                    const s = importStatus as {
-                      total_channels?: number;
-                      channels_done?: number;
-                      messages_imported?: number;
-                      current_channel?: string;
-                    };
-                    const pct = s.total_channels
-                      ? Math.round(
-                          ((s.channels_done ?? 0) / s.total_channels) * 100,
-                        )
-                      : 0;
-                    return (
-                      <>
-                        <Progress value={pct} />
-                        <div className="text-sm text-muted-foreground">
-                          {s.channels_done ?? 0}/{s.total_channels ?? "…"}{" "}
-                          channels
-                          {s.current_channel
-                            ? ` · now: #${s.current_channel}`
-                            : ""}
-                          {` · ${s.messages_imported ?? 0} messages`}
-                        </div>
-                      </>
-                    );
-                  })()}
-                </CardContent>
-              </Card>
-            )}
 
           {/* ---------- Memory ---------- */}
           {slackDone && (

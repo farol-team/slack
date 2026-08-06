@@ -54,12 +54,13 @@ OpenViking MCP endpoint via `AssignTurn.memory`.
 - `app/chat_router.py` — ChatRouter: chats (thread = conversation), turns, runner registry (in-memory).
 - `app/slack_app.py` — Slack Bolt: mentions, Approve/Deny/Stop buttons, IngestionBuffer.
 - `app/memory.py` — OpenViking HTTP client (trusted mode: identity via
-  `X-OpenViking-*` headers). `app/importer.py` — channel history import.
+  `X-OpenViking-*` headers). Memory fills from live ingestion only — the
+  history importer was removed, see story A2.
 - `app/gateway.py` — agent-facing memory gateway: `/memory/mcp` proxies native
   OpenViking MCP with signed task tokens scoped to the mention's channel.
 - `app/main.py` — FastAPI: `/runner/v1` (WS), `/slack/events`, `/memory/mcp`,
-  `/internal/provision`, `/internal/import/*` (protected by `x-internal-secret`),
-  `/healthz`.
+  `/internal/*` — provision, channels, memory status (protected by
+  `x-internal-secret`) — and `/healthz`.
 
 ### runner/ (Rust, edition 2021)
 - `crates/farol-core/src/` — `protocol.rs` (message contract, serde tagged union),

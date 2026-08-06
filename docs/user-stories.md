@@ -20,10 +20,18 @@ As a workspace admin, I click "Add to Slack" in the dashboard, approve OAuth, an
 appears in my Slack; channels the bot is in are synced to the dashboard.
 *Code: `slack.connectUrl` + `handleSlackCallback` (app/api/slack-oauth.ts).*
 
-**A2. Instant history import** — ✅
+**A2. Instant history import** — 🚫 removed 2026-08-06
 As an admin, after installing I want the bot to import existing channel history, so the
 team memory is useful from day one; I can watch import progress in the dashboard.
-*Code: `ImportManager` (cloud/app/importer.py), `slack.importStatus`.*
+*Withdrawn, not deferred: Slack rate-limits `conversations.history` to 1 request
+per minute and 15 messages per request for distributed apps outside the
+Marketplace, and the grace period for existing installs ended 2026-03-03. That
+is ~900 messages an hour per workspace — days for one busy channel — and the
+limit is shared across channels. The old importer assumed Tier 3 (50+/min,
+200 per page), so on a real workspace it did not fail loudly, it imported a
+fraction and reported success. Memory now fills from live ingestion only.
+Bringing this back needs one of: Marketplace approval, an internal
+(customer-built) app for the import, or ingesting a Slack export file.*
 
 **A3. Memory tenant auto-provisioning** — ❌ (P0)
 As an admin, I don't want to configure OpenViking manually: installing the Slack app must

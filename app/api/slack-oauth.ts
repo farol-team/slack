@@ -29,8 +29,8 @@ export const SLACK_SCOPES = [
   // Marks the message that asked: 👀 while the runner works, ✅ when it lands.
   "reactions:write",
   // BYOA needs to know who mentioned the bot: the member link is matched by
-  // email on first contact (`users_info`), and the history importer names
-  // authors. Missing here, a fresh install cannot route a single mention.
+  // email on first contact (`users_info`), and ingestion names the authors it
+  // archives. Missing here, a fresh install cannot route a single mention.
   "users:read",
   "users:read.email",
   // A DM to the bot is the same conversation, with its own memory scope.
@@ -183,27 +183,6 @@ export const slackRouter = createRouter({
       return { ovUserKey: match.member.ovUserKey ?? "", memberId: match.member.id };
     }),
 
-  /** Import progress proxy: workspace -> cloud job status. */
-  importStatus: authedQuery
-    .input(z.object({ workspaceId: z.number() }))
-    .query(async ({ ctx, input }) => {
-      await requireMembership(input.workspaceId, ctx.user.id);
-      const db = getDb();
-      const [ws] = await db.select().from(workspaces).where(eq(workspaces.id, input.workspaceId)).limit(1);
-      if (!ws?.slackTeamId) return { state: "not_connected" as const };
-      const cloudUrl = env.farolCloudUrl;
-      if (!cloudUrl || !INTERNAL_SECRET) return { state: "unavailable" as const };
-      try {
-        const res = await fetch(`${cloudUrl}/internal/import/${ws.slackTeamId}/status`, {
-          headers: { "x-internal-secret": INTERNAL_SECRET },
-        });
-        if (res.status === 404) return { state: "not_started" as const };
-        if (!res.ok) return { state: "unavailable" as const };
-        return (await res.json()) as Record<string, unknown>;
-      } catch {
-        return { state: "unavailable" as const };
-      }
-    }),
 
   /** Public channels of the linked workspace, and whether the bot is in
    *  them. The bot token stays in the cloud; this only proxies. */
@@ -396,10 +375,9 @@ export async function handleSlackCallback(
     // channel sync is non-fatal
   }
 
-  // Provision the OpenViking account, then kick off the historical
-  // import in cloud (both fire-and-forget).
+  // Provision the OpenViking account (fire-and-forget).
   const teamId = data.team.id;
-  void triggerProvision(teamId).then(() => triggerHistoryImport(teamId));
+  void triggerProvision(teamId);
 
   return { redirectTo: "/dashboard?slack=connected" };
 }
@@ -423,20 +401,3 @@ export async function triggerProvision(teamId: string): Promise<void> {
   }
 }
 
-/** Fire-and-forget: ask cloud to start the historical import. */
-export async function triggerHistoryImport(teamId: string): Promise<void> {
-  const cloudUrl = env.farolCloudUrl;
-  if (!cloudUrl || !INTERNAL_SECRET) return;
-  try {
-    await fetch(`${cloudUrl}/internal/import/start`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "x-internal-secret": INTERNAL_SECRET,
-      },
-      body: JSON.stringify({ team_id: teamId }),
-    });
-  } catch {
-    // import is best-effort; user can see status in the dashboard
-  }
-}

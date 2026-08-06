@@ -96,13 +96,21 @@ already paid for. Fail 3 and we are competing with Zapier on automation.
 ## The cheapest way to find out
 
 Do not build connectors. Take one real, busy channel that is not ours —
-ideally a customer channel with history — import it with the importer we
-already have, and watch two numbers for a week:
+ideally a customer channel with history — get its history into memory, and
+watch two numbers for a week:
 
 - share of mentions whose answer **required** history;
 - share of answers after which **something changed** outside Slack.
 
 Everything else can wait until those two numbers are non-zero.
+
+Getting the history in is the part that stopped being easy. Slack limits
+`conversations.history` to 1 request per minute and 15 messages per request for
+distributed apps outside the Marketplace, and the grace period for existing
+installs ended 2026-03-03 — roughly 900 messages an hour for a whole workspace.
+The importer that assumed otherwise was removed on 2026-08-06 (story A2), so a
+pilot needs an internal app built in the client's own workspace, which keeps
+Tier 3, or a Slack export file.
 
 ## So what — which third survives
 
