@@ -15,6 +15,8 @@ House rules, so these stay worth reading:
 - **No numbers without a source.** Marketing figures are quoted as marketing
   figures.
 
+**Start here:** [the overview](README-overview.md) — what all ten say together.
+
 | Spike | Date | Question |
 |---|---|---|
 | [Viktor](2026-08-05-viktor.md) | 2026-08-05 | A hosted "AI employee" in Slack — same shelf as us? |
