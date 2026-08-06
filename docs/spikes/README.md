@@ -26,3 +26,4 @@ House rules, so these stay worth reading:
 | [Secure sandbox](2026-08-06-secure-sandbox.md) | 2026-08-06 | A safe container for CLIENT agents (multi-tenant, untrusted): gVisor benchmarked here, the escape record, and the agent's own OS sandbox as the second boundary |
 | [Slack agent market](2026-08-05-slack-agent-market.md) | 2026-08-05 | 25 agents that live in Slack — pricing, execution substrate, and whether the coding shelf is worth standing on |
 | [Idea challenge](2026-08-06-idea-challenge.md) | 2026-08-06 | Eight ways "Slack + agent + memory" dies, what would have to be true, and which third survives |
+| [Open Tag](2026-08-06-open-tag.md) | 2026-08-06 | Positioning Farol as the open-source Claude Tag — any ACP agent, behind your perimeter; the two preconditions before the name is honest |
