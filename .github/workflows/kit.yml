@@ -9,7 +9,7 @@ on:
 
 jobs:
   kit-intact:
-    name: kit intact
+    name: kit matches KIT_REVISION
     runs-on: ubuntu-latest
     # The check itself takes under a second; the whole job is checkout plus
     # two script runs. Anything past this is the runner not showing up, and
@@ -18,9 +18,9 @@ jobs:
     timeout-minutes: 5
     steps:
       - uses: actions/checkout@v4
-      - name: Verify
+      - name: Verify the kit digest
         run: bin/kit-verify
-      - name: Selftest
+      - name: Prove the check can fail
         # A green check that cannot go red says nothing. This proves it can on
         # every run, rather than on the day somebody thinks to try it.
         run: bin/kit-verify --selftest
