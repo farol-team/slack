@@ -1,5 +1,5 @@
 //! Cloud protocol: messages exchanged between the runner and the SaaS
-//! over a single outbound WebSocket (wss://hooks.opentag.farol.team/runner/v1).
+//! over a single outbound WebSocket (wss://opentag-hooks.farol.team/runner/v1).
 //!
 //! Direction: the runner always dials out — no open ports on the client.
 

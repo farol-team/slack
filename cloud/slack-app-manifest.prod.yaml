@@ -1,6 +1,6 @@
 # Slack App Manifest for OpenTag — production (app id A0BP0QCBCMN).
 #
-# Events go DIRECTLY to the cloud VM (hooks.opentag.farol.team, caddy TLS): the
+# Events go DIRECTLY to the cloud VM (opentag-hooks.farol.team, caddy TLS): the
 # Yandex API Gateway strips Slack signature headers, so events cannot
 # pass through opentag.farol.team. OAuth redirects are browser redirects
 # (query params) and stay on the SaaS domain.
@@ -74,9 +74,9 @@ settings:
   # interactions on the same endpoint as events.
   interactivity:
     is_enabled: true
-    request_url: https://hooks.opentag.farol.team/slack/events
+    request_url: https://opentag-hooks.farol.team/slack/events
   event_subscriptions:
-    request_url: https://hooks.opentag.farol.team/slack/events
+    request_url: https://opentag-hooks.farol.team/slack/events
     bot_events:
       - app_mention
       - message.channels

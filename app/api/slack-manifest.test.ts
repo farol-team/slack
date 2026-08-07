@@ -91,7 +91,7 @@ describe("production Slack manifest", () => {
     const urls = [...manifest.matchAll(/request_url: (\S+)/g)].map(m => m[1]);
     expect(urls.length).toBeGreaterThan(0);
     for (const url of urls) {
-      expect(url).toBe("https://hooks.opentag.farol.team/slack/events");
+      expect(url).toBe("https://opentag-hooks.farol.team/slack/events");
     }
   });
 
@@ -130,7 +130,7 @@ function read(relative: string): string {
 const KEPT_HOSTS = new Set([
   "farol.team",
   "opentag.farol.team",
-  "hooks.opentag.farol.team",
+  "opentag-hooks.farol.team",
 ]);
 
 /**
@@ -192,6 +192,7 @@ const GUARDED_GREP = [
   ":(exclude)docs/spikes",
   ":(exclude)docs/claude-tag-comparison.md",
   ":(exclude).flow",
+  ":(exclude).claude/learnings.jsonl",
   ":(exclude).claude/KIT_REVISION",
   ":(exclude).github/workflows/kit.yml",
   ":(exclude)bin/workflow-kit-sync",
@@ -409,10 +410,10 @@ describe("the OpenTag rename", () => {
     ].map(m => m[1]);
     expect(hosts.length).toBeGreaterThan(0);
     expect([...new Set(hosts)].sort()).toEqual([
-      "hooks.opentag.farol.team",
+      "opentag-hooks.farol.team",
       "opentag.farol.team",
     ]);
-    expect(configRs).toContain('"wss://hooks.opentag.farol.team/runner/v1"');
+    expect(configRs).toContain('"wss://opentag-hooks.farol.team/runner/v1"');
 
     // The SaaS the runner is sent to sign in at is the SaaS Slack redirects
     // to — one host, named in two repositories' worth of artefacts.

@@ -1,5 +1,5 @@
 """The ops surface: health and the SaaS <-> cloud internal API
-(shared-secret guarded). Not exposed on hooks.opentag.farol.team."""
+(shared-secret guarded). Not exposed on opentag-hooks.farol.team."""
 
 from __future__ import annotations
 

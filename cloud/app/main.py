@@ -1,6 +1,6 @@
 """Entry point: assembles the three surfaces of the data plane.
 
-- hooks_api    — public, served via hooks.opentag.farol.team (caddy allowlist):
+- hooks_api    — public, served via opentag-hooks.farol.team (caddy allowlist):
                  /slack/events, /memory/mcp. Authenticated by request
                  content (Slack signatures, signed memory tokens).
 - runner_api   — /runner/v1 outbound-WS endpoint for thin clients.

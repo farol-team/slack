@@ -93,7 +93,7 @@ metadata.
   after the key is fixed — `find` returns nothing for it. Reindex per channel
   directory as the account admin (`POST /api/v1/content/reindex`, mode
   `semantic_and_vectors`, `uri` = the directory; a single-file uri 500s).
-- ~~No TLS on the cloud VM~~ — Caddy fronts it: `https://hooks.opentag.farol.team`
+- ~~No TLS on the cloud VM~~ — Caddy fronts it: `https://opentag-hooks.farol.team`
   terminates TLS and proxies only `/slack/events`, `/memory/mcp*`,
   `/runner/v1` and `/internal/*`; the cloud container publishes no host port.
 - Custom domain: the gateway URL is machine-generated; attach a real domain via

@@ -11,7 +11,7 @@ const KEYRING_USER: &str = "cloud-token";
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct RunnerConfig {
-    /// Cloud endpoint, e.g. "wss://hooks.opentag.farol.team/runner/v1".
+    /// Cloud endpoint, e.g. "wss://opentag-hooks.farol.team/runner/v1".
     pub cloud_url: String,
     /// SaaS control plane URL ("Connect with Slack" flow). A different service
     /// from cloud_url — do not conflate the two.
@@ -50,7 +50,7 @@ pub struct AgentEntry {
 impl Default for RunnerConfig {
     fn default() -> Self {
         Self {
-            cloud_url: "wss://hooks.opentag.farol.team/runner/v1".into(),
+            cloud_url: "wss://opentag-hooks.farol.team/runner/v1".into(),
             saas_url: default_saas_url(),
             workspace_id: None,
             // The pinned ACP adapters; none of them ships with the runner, so
