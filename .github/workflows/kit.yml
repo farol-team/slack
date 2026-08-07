@@ -11,6 +11,11 @@ jobs:
   kit-intact:
     name: the workflow kit is the revision it says it is
     runs-on: ubuntu-latest
+    # The check itself takes under a second; the whole job is checkout plus
+    # two script runs. Anything past this is the runner not showing up, and
+    # a job that waits fifteen minutes and then reports "failure" with no
+    # logs reads as a broken check rather than an absent machine.
+    timeout-minutes: 5
     steps:
       - uses: actions/checkout@v4
       - name: kit matches .claude/KIT_REVISION
