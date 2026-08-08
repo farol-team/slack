@@ -3,6 +3,23 @@
 version = 4
 
 [[package]]
+name = "acp-agents"
+version = "0.1.1"
+source = "git+https://github.com/farol-team/acp-agents?tag=v0.1.1#e6d4d28d6c7d44c3858392f86709d8724a5e613f"
+
+[[package]]
+name = "acp-client"
+version = "0.1.1"
+source = "git+https://github.com/farol-team/acp-agents?tag=v0.1.1#e6d4d28d6c7d44c3858392f86709d8724a5e613f"
+dependencies = [
+ "libc",
+ "serde_json",
+ "thiserror 2.0.19",
+ "tokio",
+ "tracing",
+]
+
+[[package]]
 name = "adler2"
 version = "2.0.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2480,6 +2497,8 @@ checksum = "7c87def4c32ab89d880effc9e097653c8da5d6ef28e6b539d313baaacfbafcbe"
 name = "opentag-core"
 version = "0.1.0"
 dependencies = [
+ "acp-agents",
+ "acp-client",
  "anyhow",
  "directories",
  "futures-util",
@@ -2499,6 +2518,7 @@ dependencies = [
 name = "opentag-runner-desktop"
 version = "0.1.0"
 dependencies = [
+ "acp-agents",
  "hostname",
  "opentag-core",
  "serde",

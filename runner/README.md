@@ -12,8 +12,8 @@ and executes tasks from Slack on a local coding agent via **ACP (Agent Client Pr
 │ @bot   │──────────────►│ Task Router  │◄────────────────►│ OpenTag Runner (Tauri)  │
 │ in     │               │ + OpenViking │                  │  ├─ cloud.rs   WS+   │
 │ thread │               └──────┬───────┘                  │  │           reconnect│
-└───▲────┘                      │ AssignTask               │  ├─ acp.rs   JSON-RPC│
-    │  chat.postMessage         │                          │  │           over stdio
+└───▲────┘                      │ AssignTask               │  ├─ acp-client       │
+    │  chat.postMessage         │                          │  │    JSON-RPC/stdio  │
     └───────────────────────────┘                          │  ├─ session.rs      │
          (chunk streaming, Approve/Deny buttons, Stop)     │  └─ config.rs +     │
                                                            │     keychain        │
@@ -27,10 +27,12 @@ and executes tasks from Slack on a local coding agent via **ACP (Agent Client Pr
 
 Principles:
 - **Zero open ports**: the client always initiates the connection itself (`cloud.rs`).
-- **Agent as a subprocess**: JSON-RPC 2.0 over stdio (`acp.rs`), not tied to any
-  specific agent — any ACP-compatible one works. Three adapters are pinned in
-  `agents.rs` (Claude Code, Codex, OpenCode) and the desktop app installs one on
-  a press; a hand-written command in `config.json` works just as well.
+- **Agent as a subprocess**: JSON-RPC 2.0 over stdio, not tied to any specific
+  agent — any ACP-compatible one works. The client and the adapter catalogue
+  (Claude Code, Codex, Cursor, OpenCode) come from the shared
+  [`acp-agents`](https://github.com/farol-team/acp-agents) crates; the desktop
+  app installs one on a press, and a hand-written command in `config.json`
+  works just as well.
 - **Memory from the cloud**: `AssignTurn.memory` contains the OpenViking MCP endpoint;
   the client passes it to the agent on `session/new` — the agent gets the team's memory.
 - **Security**: the agent runs only inside directories the person opened up —
@@ -46,10 +48,8 @@ runner/
 ├── crates/opentag-core/       # verified with cargo check ✅
 │   ├── src/
 │   │   ├── protocol.rs        # cloud ↔ runner message contract
-│   │   ├── acp.rs             # ACP client (JSON-RPC stdio)
 │   │   ├── cloud.rs           # WebSocket loop with reconnect/backoff
-│   │   ├── session.rs         # SessionManager: task → ACP session
-│   │   ├── agents.rs          # pinned ACP adapters + PATH resolution
+│   │   ├── session.rs         # SessionManager: turn policy, memory, permissions
 │   │   ├── workspace.rs       # ~/OpenTag/<workspace>/<channel> derivation
 │   │   ├── connect.rs         # browser handoff: approve in the dashboard
 │   │   └── config.rs          # config + keychain (token)

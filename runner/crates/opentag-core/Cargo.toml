@@ -4,6 +4,12 @@ version.workspace = true
 edition.workspace = true
 
 [dependencies]
+# Speaking ACP, and knowing which agents do, is shared with the other products
+# that run a local agent the same way. Pinned by tag: three repositories with
+# three release rhythms must not break on each other.
+acp-client = { git = "https://github.com/farol-team/acp-agents", tag = "v0.1.1" }
+acp-agents = { git = "https://github.com/farol-team/acp-agents", tag = "v0.1.1" }
+
 tokio.workspace = true
 serde.workspace = true
 serde_json.workspace = true
