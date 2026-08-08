@@ -6,9 +6,9 @@ pub mod agents;
 pub mod cloud;
 pub mod config;
 pub mod connect;
+pub mod protocol;
 pub mod session;
 pub mod workspace;
-pub mod protocol;
 
 pub use config::RunnerConfig;
 pub use session::SessionManager;

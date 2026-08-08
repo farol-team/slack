@@ -53,9 +53,18 @@ mod tests {
     #[test]
     fn each_workspace_and_channel_gets_its_own_directory() {
         let root = Path::new("/data");
-        assert_eq!(derive_path(root, "OpenTag", "dev"), PathBuf::from("/data/opentag/dev"));
-        assert_ne!(derive_path(root, "OpenTag", "dev"), derive_path(root, "OpenTag", "ops"));
-        assert_ne!(derive_path(root, "OpenTag", "dev"), derive_path(root, "Acme", "dev"));
+        assert_eq!(
+            derive_path(root, "OpenTag", "dev"),
+            PathBuf::from("/data/opentag/dev")
+        );
+        assert_ne!(
+            derive_path(root, "OpenTag", "dev"),
+            derive_path(root, "OpenTag", "ops")
+        );
+        assert_ne!(
+            derive_path(root, "OpenTag", "dev"),
+            derive_path(root, "Acme", "dev")
+        );
     }
 
     #[test]

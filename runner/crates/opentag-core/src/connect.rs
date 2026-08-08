@@ -95,7 +95,10 @@ fn parse_poll_body(body: &str) -> Result<PollOutcome> {
             token,
             workspace_id,
         } => match (token, workspace_id) {
-            (Some(token), Some(workspace_id)) => Ok(PollOutcome::Approved { token, workspace_id }),
+            (Some(token), Some(workspace_id)) => Ok(PollOutcome::Approved {
+                token,
+                workspace_id,
+            }),
             // The SaaS returns "approved" without a token on repeat polls:
             // the one-time token was already consumed — treat as an error.
             _ => bail!("connect/poll: approved without a token (already consumed?)"),
@@ -118,7 +121,10 @@ pub async fn poll(saas_url: &str, code: &str) -> Result<PollOutcome> {
     if !resp.status().is_success() {
         bail!("connect/poll failed: HTTP {}", resp.status());
     }
-    let body = resp.text().await.context("connect/poll: read body failed")?;
+    let body = resp
+        .text()
+        .await
+        .context("connect/poll: read body failed")?;
     parse_poll_body(&body)
 }
 
@@ -136,10 +142,7 @@ pub async fn wait_for_approval(
             outcome => return Ok(outcome),
         }
         if Instant::now() + interval > deadline {
-            bail!(
-                "connect: approval timed out after {}s",
-                timeout.as_secs()
-            );
+            bail!("connect: approval timed out after {}s", timeout.as_secs());
         }
         sleep(interval).await;
     }
@@ -171,10 +174,9 @@ mod tests {
 
     #[test]
     fn parse_approved() {
-        let out = parse_poll_body(
-            r#"{"status":"approved","token":"frl_abc","workspaceId":"ws-1"}"#,
-        )
-        .unwrap();
+        let out =
+            parse_poll_body(r#"{"status":"approved","token":"frl_abc","workspaceId":"ws-1"}"#)
+                .unwrap();
         assert_eq!(
             out,
             PollOutcome::Approved {

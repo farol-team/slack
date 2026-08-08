@@ -54,8 +54,10 @@ async fn main() -> anyhow::Result<()> {
         os: std::env::consts::OS.into(),
     });
 
-    info!("cloud_url={} agents={:?} root={:?} extra_cwds={:?}",
-          cfg.cloud_url, installed, cfg.root_dir, cfg.allowed_cwds);
+    info!(
+        "cloud_url={} agents={:?} root={:?} extra_cwds={:?}",
+        cfg.cloud_url, installed, cfg.root_dir, cfg.allowed_cwds
+    );
 
     // The message handler needs the SessionManager, but it depends on the CloudSender,
     // which only exists after run_connection_loop — break the cycle with a slot.
@@ -71,7 +73,8 @@ async fn main() -> anyhow::Result<()> {
                     tokio::spawn(async move { sm.handle_assign(task).await });
                 }
                 CloudMessage::PermissionDecision(d) => {
-                    sm.handle_permission(d.turn_id, d.permission_id, d.approved).await;
+                    sm.handle_permission(d.turn_id, d.permission_id, d.approved)
+                        .await;
                 }
                 CloudMessage::CancelTurn { turn_id } => {
                     sm.handle_cancel(turn_id).await;

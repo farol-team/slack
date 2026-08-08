@@ -4,9 +4,7 @@
 use crate::acp::{AcpClient, AcpEvent};
 use crate::cloud::CloudSender;
 use crate::config::RunnerConfig;
-use crate::protocol::{
-    AssignTurn, CloudMessage, TurnEvent, TurnEventKind, TurnResult, TurnStatus,
-};
+use crate::protocol::{AssignTurn, CloudMessage, TurnEvent, TurnEventKind, TurnResult, TurnStatus};
 use serde_json::json;
 use std::collections::HashMap;
 use std::path::PathBuf;
@@ -75,13 +73,19 @@ impl SessionManager {
         // this channel, or the one it derives from the names and creates.
         let cwd = if task.cwd.is_empty() {
             match self.config.workspace_for(
-                &task.slack_channel, &task.workspace_name, &task.channel_name,
+                &task.slack_channel,
+                &task.workspace_name,
+                &task.channel_name,
             ) {
                 Ok(dir) => dir,
                 Err(e) => {
                     error!("cannot prepare a working directory: {e}");
-                    self.finish(task.turn_id, TurnStatus::Failed, None,
-                                Some(format!("cannot prepare a working directory: {e}")));
+                    self.finish(
+                        task.turn_id,
+                        TurnStatus::Failed,
+                        None,
+                        Some(format!("cannot prepare a working directory: {e}")),
+                    );
                     return;
                 }
             }
@@ -91,22 +95,40 @@ impl SessionManager {
         // Security gate: never run outside allowlisted directories.
         if !self.config.is_cwd_allowed(&cwd) {
             error!("rejected cwd outside allowlist: {cwd:?}");
-            self.finish(task.turn_id, TurnStatus::Failed, None,
-                        Some(format!("cwd not allowed by local policy: {}", cwd.display())));
+            self.finish(
+                task.turn_id,
+                TurnStatus::Failed,
+                None,
+                Some(format!(
+                    "cwd not allowed by local policy: {}",
+                    cwd.display()
+                )),
+            );
             return;
         }
 
         // Fall back to the first adapter that is actually on this machine —
         // falling back to the first *configured* one would spawn something
         // absent and surface as a cryptic spawn error in the Slack thread.
-        let agent = match self.config.agents.iter().find(|a| a.name == task.agent)
-            .or_else(|| self.config.agents.iter()
-                .find(|a| crate::agents::is_installed(&a.command, None)))
-        {
+        let agent = match self
+            .config
+            .agents
+            .iter()
+            .find(|a| a.name == task.agent)
+            .or_else(|| {
+                self.config
+                    .agents
+                    .iter()
+                    .find(|a| crate::agents::is_installed(&a.command, None))
+            }) {
             Some(a) => a.clone(),
             None => {
-                self.finish(task.turn_id, TurnStatus::Failed, None,
-                            Some("no ACP adapter installed on this runner".into()));
+                self.finish(
+                    task.turn_id,
+                    TurnStatus::Failed,
+                    None,
+                    Some("no ACP adapter installed on this runner".into()),
+                );
                 return;
             }
         };
@@ -117,10 +139,8 @@ impl SessionManager {
         // OpenViking pick it up via MCP server config in session/new.
         // PATH is not decoration: an adapter's shebang resolves `node` through
         // it, and a desktop app's own PATH has neither Homebrew nor nvm in it.
-        let env: Vec<(String, String)> = vec![(
-            "PATH".to_string(),
-            crate::agents::spawn_path(None),
-        )];
+        let env: Vec<(String, String)> =
+            vec![("PATH".to_string(), crate::agents::spawn_path(None))];
 
         // Whatever the person attached lands next to the work, before the
         // agent starts: a prompt that mentions a file it cannot open is worse
@@ -137,20 +157,33 @@ impl SessionManager {
             Ok(_) => task.prompt.clone(),
             Err(e) => {
                 error!("attachments failed: {e}");
-                format!("{}\n\n(An attachment could not be downloaded: {e})", task.prompt)
+                format!(
+                    "{}\n\n(An attachment could not be downloaded: {e})",
+                    task.prompt
+                )
             }
         };
 
         let client = match AcpClient::spawn(&agent.command, &agent.args, &cwd, &env, ev_tx).await {
             Ok(c) => c,
             Err(e) => {
-                self.finish(task.turn_id, TurnStatus::Failed, None, Some(format!("spawn: {e}")));
+                self.finish(
+                    task.turn_id,
+                    TurnStatus::Failed,
+                    None,
+                    Some(format!("spawn: {e}")),
+                );
                 return;
             }
         };
 
         if let Err(e) = client.initialize().await {
-            self.finish(task.turn_id, TurnStatus::Failed, None, Some(format!("initialize: {e}")));
+            self.finish(
+                task.turn_id,
+                TurnStatus::Failed,
+                None,
+                Some(format!("initialize: {e}")),
+            );
             return;
         }
 
@@ -190,8 +223,12 @@ impl SessionManager {
                 Ok(sid) => Some(sid),
                 Err(e) => {
                     client.shutdown().await;
-                    self.finish(task.turn_id, TurnStatus::Failed, None,
-                                Some(format!("session/new: {e}")));
+                    self.finish(
+                        task.turn_id,
+                        TurnStatus::Failed,
+                        None,
+                        Some(format!("session/new: {e}")),
+                    );
                     return;
                 }
             },
@@ -203,7 +240,10 @@ impl SessionManager {
             session_id: session_id.clone(),
             pending_permissions: HashMap::new(),
         }));
-        self.tasks.lock().await.insert(task.turn_id, running.clone());
+        self.tasks
+            .lock()
+            .await
+            .insert(task.turn_id, running.clone());
 
         // Forward ACP events to the cloud (cloud renders them into Slack).
         let cloud = self.cloud.clone();
@@ -213,10 +253,17 @@ impl SessionManager {
                 let (kind, text, permission_id) = match ev {
                     AcpEvent::MessageChunk(t) => (TurnEventKind::AgentMessageChunk, t, None),
                     AcpEvent::ToolCall { title } => (TurnEventKind::ToolCall, title, None),
-                    AcpEvent::ToolCallUpdate { title } => (TurnEventKind::ToolCallUpdate, title, None),
+                    AcpEvent::ToolCallUpdate { title } => {
+                        (TurnEventKind::ToolCallUpdate, title, None)
+                    }
                     AcpEvent::Plan(t) => (TurnEventKind::Plan, t, None),
-                    AcpEvent::PermissionRequest { request_id, description, tool_kind,
-                                                  allow_id, reject_id } => {
+                    AcpEvent::PermissionRequest {
+                        request_id,
+                        description,
+                        tool_kind,
+                        allow_id,
+                        reject_id,
+                    } => {
                         if auto_allowed(&description, &tool_kind) {
                             info!("permission auto-allowed: {description} (kind {tool_kind})");
                             let client = running.lock().await.client.clone();
@@ -226,7 +273,10 @@ impl SessionManager {
                             continue;
                         }
                         let pid = request_id.to_string();
-                        running.lock().await.pending_permissions
+                        running
+                            .lock()
+                            .await
+                            .pending_permissions
                             .insert(pid.clone(), (request_id, allow_id, reject_id.clone()));
                         // Nobody may answer — a misconfigured Slack app delivers
                         // the click nowhere, and the agent would hold the thread
@@ -237,8 +287,11 @@ impl SessionManager {
                             tokio::time::sleep(PERMISSION_TIMEOUT).await;
                             let mut t = task.lock().await;
                             if t.pending_permissions.remove(&pid_timeout).is_some() {
-                                tracing::warn!("permission {pid_timeout} unanswered \
-                                    for {}s — denying", PERMISSION_TIMEOUT.as_secs());
+                                tracing::warn!(
+                                    "permission {pid_timeout} unanswered \
+                                    for {}s — denying",
+                                    PERMISSION_TIMEOUT.as_secs()
+                                );
                                 let _ = t.client.respond_permission(request_id, &reject_id).await;
                             }
                         });
@@ -246,7 +299,10 @@ impl SessionManager {
                     }
                 };
                 cloud.send(&CloudMessage::TurnEvent(TurnEvent {
-                    turn_id, kind, text, permission_id,
+                    turn_id,
+                    kind,
+                    text,
+                    permission_id,
                 }));
             }
         });
@@ -268,7 +324,12 @@ impl SessionManager {
         entry.lock().await.client.shutdown().await;
         match result {
             Ok(()) => self.finish(task.turn_id, TurnStatus::Done, session_id, None),
-            Err(e) => self.finish(task.turn_id, TurnStatus::Failed, session_id, Some(e.to_string())),
+            Err(e) => self.finish(
+                task.turn_id,
+                TurnStatus::Failed,
+                session_id,
+                Some(e.to_string()),
+            ),
         }
     }
 
@@ -283,7 +344,11 @@ impl SessionManager {
         if task.attachments.is_empty() {
             return Ok(vec![]);
         }
-        let token = task.memory.as_ref().map(|m| m.user_key.clone()).unwrap_or_default();
+        let token = task
+            .memory
+            .as_ref()
+            .map(|m| m.user_key.clone())
+            .unwrap_or_default();
         let dir = cwd.join(".opentag").join("attachments");
         tokio::fs::create_dir_all(&dir).await?;
         let http = reqwest::Client::new();
@@ -315,7 +380,9 @@ impl SessionManager {
         let tasks = self.tasks.lock().await;
         if let Some(task) = tasks.get(&turn_id) {
             let mut t = task.lock().await;
-            if let Some((request_id, allow_id, reject_id)) = t.pending_permissions.remove(&permission_id) {
+            if let Some((request_id, allow_id, reject_id)) =
+                t.pending_permissions.remove(&permission_id)
+            {
                 let option_id = if approved { allow_id } else { reject_id };
                 let _ = t.client.respond_permission(request_id, &option_id).await;
             }
@@ -338,9 +405,18 @@ impl SessionManager {
         self.finish(turn_id, TurnStatus::Cancelled, session_id, None);
     }
 
-    fn finish(&self, turn_id: Uuid, status: TurnStatus, session_id: Option<String>, error: Option<String>) {
+    fn finish(
+        &self,
+        turn_id: Uuid,
+        status: TurnStatus,
+        session_id: Option<String>,
+        error: Option<String>,
+    ) {
         self.cloud.send(&CloudMessage::TurnResult(TurnResult {
-            turn_id, status, session_id, error,
+            turn_id,
+            status,
+            session_id,
+            error,
         }));
     }
 
