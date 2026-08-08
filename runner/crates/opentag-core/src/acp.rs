@@ -41,11 +41,16 @@ pub enum AcpEvent {
     },
 }
 
+/// Who is waiting for which reply. Named because it is written twice — once
+/// as a field and once where it is built — and a type this long copied by hand
+/// is a type that drifts.
+type Pending = Arc<Mutex<HashMap<u64, oneshot::Sender<Result<Value, String>>>>>;
+
 pub struct AcpClient {
     child: Arc<Mutex<Child>>,
     stdin: Arc<Mutex<ChildStdin>>,
     next_id: AtomicU64,
-    pending: Arc<Mutex<HashMap<u64, oneshot::Sender<Result<Value, String>>>>>,
+    pending: Pending,
     /// Raised while `session/load` is in flight. ACP requires the agent to
     /// replay the entire conversation as ordinary `session/update`
     /// notifications, so without this every resumed turn would repeat the
@@ -76,8 +81,7 @@ impl AcpClient {
         let stdin = child.stdin.take().ok_or_else(|| anyhow!("no stdin"))?;
         let stdout = child.stdout.take().ok_or_else(|| anyhow!("no stdout"))?;
 
-        let pending: Arc<Mutex<HashMap<u64, oneshot::Sender<Result<Value, String>>>>> =
-            Arc::new(Mutex::new(HashMap::new()));
+        let pending: Pending = Arc::new(Mutex::new(HashMap::new()));
         let pending_reader = pending.clone();
         let replaying = Arc::new(AtomicBool::new(false));
         let replaying_reader = replaying.clone();
