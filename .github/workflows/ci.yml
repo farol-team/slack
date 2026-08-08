@@ -1,0 +1,123 @@
+# What this repository ships, checked on every change.
+#
+# Before this existed the only workflow on a pull request was `kit`, which
+# checks that the agent-flow kit is the revision it says it is — so a green
+# tick meant the kit was intact and said nothing about the runner, the SaaS or
+# the cloud. A branch could delete a module and pass.
+#
+# One job per deployable, and each runs what its own README says to run. Fast
+# on purpose: the point is that it runs on every pull request, and a suite
+# nobody waits for is a suite people learn to merge past.
+name: ci
+
+on:
+  pull_request:
+  push:
+    branches: [master]
+
+# A superseded run is answering a question nobody is asking any more.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  runner:
+    name: runner (core)
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: runner
+      - name: Format
+        run: cargo fmt --all --check
+        working-directory: runner
+      # The core only: the Tauri app is checked on the platform it ships on,
+      # and pulling a webview toolchain in here would double the wait for
+      # everybody to catch nothing the macOS job does not.
+      - name: Lint
+        run: cargo clippy -p opentag-core --all-targets -- -D warnings
+        working-directory: runner
+      - name: Specs
+        run: cargo test -p opentag-core --all-targets
+        working-directory: runner
+
+  desktop:
+    name: runner (desktop app)
+    # macOS is what the runner is released for, and the tray app is compiled
+    # nowhere else until Linux bundles exist.
+    runs-on: macos-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: runner
+      - name: Compile
+        run: cargo check --workspace --all-targets
+        working-directory: runner
+
+  app:
+    name: SaaS
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: app/package-lock.json
+      - run: npm ci
+        working-directory: app
+      - name: Types
+        run: npm run check
+        working-directory: app
+      # `npm run lint` is deliberately not here yet: it fails on this tree
+      # with eleven errors, nine of them the fast-refresh rule against the
+      # vendored shadcn components nobody hand-maintains. Turning it on today
+      # would mean a red master on the day CI arrives, which is how people
+      # learn to merge past a red tick. Written down instead (#34) and
+      # switched on in the change that clears them.
+      - name: Specs
+        run: npm test -- --passWithNoTests
+        working-directory: app
+
+  cloud:
+    name: cloud
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: cloud/requirements.txt
+      - run: pip install -r requirements.txt
+        working-directory: cloud
+      # Importing is the check: `config.py` reads its environment at import
+      # time, `main.py` wires every route, and a missing dependency or a
+      # syntax error in any module they reach shows up here. The values are
+      # deliberately nonsense — nothing is dialled, and a check that needed
+      # real secrets would not run on a fork's pull request.
+      - name: Import
+        run: python -c "import app.main"
+        working-directory: cloud
+        env:
+          SLACK_SIGNING_SECRET: ci
+          OPENVIKING_ROOT_KEY: ci
+          INTERNAL_API_SECRET: ci
+          OPENTAG_SAAS_URL: http://saas.invalid
+          OPENTAG_CLOUD_PUBLIC_URL: http://cloud.invalid
