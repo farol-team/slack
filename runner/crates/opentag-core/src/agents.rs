@@ -80,9 +80,10 @@ fn ask_the_shell() -> Option<String> {
             .args(["-ilc", "printf %s \"$PATH\""])
             .stdin(std::process::Stdio::null())
             .output();
-        let _ = tx.send(out.ok().map(|o| {
-            String::from_utf8_lossy(&o.stdout).trim().to_string()
-        }));
+        let _ = tx.send(
+            out.ok()
+                .map(|o| String::from_utf8_lossy(&o.stdout).trim().to_string()),
+        );
     });
     match rx.recv_timeout(std::time::Duration::from_secs(2)) {
         Ok(Some(path)) if !path.is_empty() => Some(path),
@@ -166,4 +167,3 @@ pub fn is_installed(command: &str, prefix: Option<&Path>) -> bool {
     }
     resolve(command, prefix).is_some()
 }
-

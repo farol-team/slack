@@ -27,10 +27,15 @@ pub enum CloudMessage {
     /// Slack user pressed Approve/Deny — resolves a pending permission.
     PermissionDecision(PermissionDecision),
     /// Cancel a running turn (Stop button / ❌ reaction).
-    CancelTurn { turn_id: Uuid },
+    CancelTurn {
+        turn_id: Uuid,
+    },
     Pong,
     /// Fatal: auth rejected, runner should stop and re-login.
-    Error { code: String, message: String },
+    Error {
+        code: String,
+        message: String,
+    },
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

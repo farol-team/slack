@@ -47,7 +47,11 @@ impl Default for RunnerStatus {
                 .map(|c| c.root_dir.display().to_string())
                 .unwrap_or_default(),
             version: match option_env!("OPENTAG_BUILD_SHA") {
-                Some(sha) => format!("{} ({})", env!("CARGO_PKG_VERSION"), &sha[..7.min(sha.len())]),
+                Some(sha) => format!(
+                    "{} ({})",
+                    env!("CARGO_PKG_VERSION"),
+                    &sha[..7.min(sha.len())]
+                ),
                 None => env!("CARGO_PKG_VERSION").to_string(),
             },
             connected: false,
@@ -63,7 +67,11 @@ impl Default for RunnerStatus {
 #[tauri::command]
 async fn get_status(state: State<'_, AppState>) -> Result<RunnerStatus, String> {
     let s = state.status.read().await.clone();
-    tracing::info!("IPC get_status: logged_in={} connected={}", s.logged_in, s.connected);
+    tracing::info!(
+        "IPC get_status: logged_in={} connected={}",
+        s.logged_in,
+        s.connected
+    );
     Ok(s)
 }
 
@@ -86,7 +94,10 @@ fn machine_label() -> String {
 async fn authorize_in_browser(app: AppHandle) -> Result<(), String> {
     let cfg = RunnerConfig::load().map_err(|e| e.to_string())?;
     let label = machine_label();
-    tracing::info!("IPC authorize_in_browser: saas_url={} label={label}", cfg.saas_url);
+    tracing::info!(
+        "IPC authorize_in_browser: saas_url={} label={label}",
+        cfg.saas_url
+    );
     let session = connect::start(&cfg.saas_url, Some(&label))
         .await
         .map_err(|e| e.to_string())?;
@@ -198,8 +209,8 @@ async fn list_agents(app: AppHandle) -> Result<Vec<AgentRow>, String> {
 /// binary that lands there. Nothing is installed until this is pressed.
 #[tauri::command]
 async fn install_agent(app: AppHandle, name: String) -> Result<AgentRow, String> {
-    let profile = opentag_core::agents::profile_for(&name)
-        .ok_or_else(|| format!("unknown agent: {name}"))?;
+    let profile =
+        opentag_core::agents::profile_for(&name).ok_or_else(|| format!("unknown agent: {name}"))?;
     let prefix = agents_prefix(&app)?;
 
     // A .app launched from Finder has a bare PATH — npm lives in Homebrew or
@@ -223,8 +234,13 @@ async fn install_agent(app: AppHandle, name: String) -> Result<AgentRow, String>
             .to_string());
     }
 
-    let resolved = opentag_core::agents::resolve(profile.command, Some(&prefix))
-        .ok_or_else(|| format!("{} installed but {} not found", profile.package, profile.command))?;
+    let resolved =
+        opentag_core::agents::resolve(profile.command, Some(&prefix)).ok_or_else(|| {
+            format!(
+                "{} installed but {} not found",
+                profile.package, profile.command
+            )
+        })?;
 
     // Record the absolute path: the runner spawns the adapter itself and its
     // PATH is the desktop session's, which need not contain our prefix.
@@ -296,7 +312,8 @@ async fn start_cloud(app: AppHandle, token: Option<String>) {
             let _ = app.emit(
                 "cloud-error",
                 "Authorized, but the token could not be read back from the keychain \
-                 — paste it under Advanced instead".to_string(),
+                 — paste it under Advanced instead"
+                    .to_string(),
             );
             let _ = app.emit("status-changed", ());
             return;
@@ -352,7 +369,8 @@ async fn handle_cloud_message(app: AppHandle, msg: CloudMessage) {
             tokio::spawn(async move { sm.handle_assign(task).await });
         }
         CloudMessage::PermissionDecision(d) => {
-            sm.handle_permission(d.turn_id, d.permission_id, d.approved).await;
+            sm.handle_permission(d.turn_id, d.permission_id, d.approved)
+                .await;
         }
         CloudMessage::CancelTurn { turn_id } => {
             sm.handle_cancel(turn_id).await;
@@ -384,7 +402,6 @@ async fn check_for_update(app: AppHandle) -> Result<Option<String>, String> {
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
-
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_updater::Builder::new().build())

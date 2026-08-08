@@ -19,8 +19,12 @@ use tracing::{debug, warn};
 #[derive(Debug, Clone)]
 pub enum AcpEvent {
     MessageChunk(String),
-    ToolCall { title: String },
-    ToolCallUpdate { title: String },
+    ToolCall {
+        title: String,
+    },
+    ToolCallUpdate {
+        title: String,
+    },
     Plan(String),
     /// Agent asks for permission; the outer layer decides whether it is
     /// worth a human's attention and answers via
@@ -126,11 +130,7 @@ impl AcpClient {
         })
     }
 
-    async fn handle_server_request(
-        id: u64,
-        msg: Value,
-        events: &mpsc::Sender<AcpEvent>,
-    ) {
+    async fn handle_server_request(id: u64, msg: Value, events: &mpsc::Sender<AcpEvent>) {
         let method = msg.get("method").and_then(Value::as_str).unwrap_or("");
         if method == "session/request_permission" {
             let params = msg.get("params").cloned().unwrap_or(Value::Null);
@@ -153,7 +153,8 @@ impl AcpClient {
                 options
                     .and_then(|opts| {
                         opts.iter().find(|o| {
-                            o.get("kind").and_then(Value::as_str)
+                            o.get("kind")
+                                .and_then(Value::as_str)
                                 .is_some_and(|k| k.starts_with(prefix))
                         })
                     })
@@ -237,7 +238,12 @@ impl AcpClient {
     /// Resume a session the agent already has. Everything it says while this
     /// call is in flight is the replay ACP mandates, not an answer — the flag
     /// keeps that history out of the Slack thread it came from.
-    pub async fn load_session(&self, session_id: &str, cwd: &str, mcp_servers: Value) -> Result<()> {
+    pub async fn load_session(
+        &self,
+        session_id: &str,
+        cwd: &str,
+        mcp_servers: Value,
+    ) -> Result<()> {
         self.replaying.store(true, Ordering::SeqCst);
         let res = self
             .call(
@@ -308,7 +314,11 @@ fn map_session_update(params: &Value) -> Option<AcpEvent> {
             .and_then(Value::as_str)
             .map(|t| AcpEvent::MessageChunk(t.to_string())),
         "tool_call" => Some(AcpEvent::ToolCall {
-            title: update.get("title").and_then(Value::as_str).unwrap_or("tool").into(),
+            title: update
+                .get("title")
+                .and_then(Value::as_str)
+                .unwrap_or("tool")
+                .into(),
         }),
         // An update carries only what changed; `title` is required on the
         // call, optional here. Inventing one produced a stream of "tool"
@@ -318,7 +328,10 @@ fn map_session_update(params: &Value) -> Option<AcpEvent> {
             .and_then(Value::as_str)
             .map(|t| AcpEvent::ToolCallUpdate { title: t.into() }),
         "plan" => Some(AcpEvent::Plan(
-            update.get("entries").map(|e| e.to_string()).unwrap_or_default(),
+            update
+                .get("entries")
+                .map(|e| e.to_string())
+                .unwrap_or_default(),
         )),
         _ => None,
     }

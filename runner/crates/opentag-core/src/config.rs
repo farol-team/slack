@@ -180,11 +180,17 @@ impl RunnerConfig {
             return Ok(bound.clone());
         }
         let workspace = if workspace_name.is_empty() {
-            self.workspace_id.clone().unwrap_or_else(|| "workspace".into())
+            self.workspace_id
+                .clone()
+                .unwrap_or_else(|| "workspace".into())
         } else {
             workspace_name.to_string()
         };
-        let channel = if channel_name.is_empty() { channel_id } else { channel_name };
+        let channel = if channel_name.is_empty() {
+            channel_id
+        } else {
+            channel_name
+        };
         let dir = crate::workspace::derive_path(&self.root_dir, &workspace, channel);
         std::fs::create_dir_all(&dir)?;
         Ok(dir)

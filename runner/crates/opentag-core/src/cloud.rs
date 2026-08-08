@@ -21,14 +21,23 @@ fn handshake_request(url: &str, version: &str, os: &str) -> Option<Request<()>> 
     let mut req = url.into_client_request().ok()?;
     let headers = req.headers_mut();
     if !version.is_empty() {
-        headers.insert("x-opentag-runner-version", HeaderValue::from_str(version).ok()?);
+        headers.insert(
+            "x-opentag-runner-version",
+            HeaderValue::from_str(version).ok()?,
+        );
     }
     if !os.is_empty() {
         headers.insert("x-opentag-runner-os", HeaderValue::from_str(os).ok()?);
     }
-    let agent = format!("opentag-runner/{} ({})",
-                        if version.is_empty() { "unknown" } else { version },
-                        if os.is_empty() { "unknown" } else { os });
+    let agent = format!(
+        "opentag-runner/{} ({})",
+        if version.is_empty() {
+            "unknown"
+        } else {
+            version
+        },
+        if os.is_empty() { "unknown" } else { os }
+    );
     headers.insert(USER_AGENT, HeaderValue::from_str(&agent).ok()?);
     Some(req)
 }
@@ -190,4 +199,3 @@ where
 
     sender_loop
 }
-
