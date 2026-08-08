@@ -192,14 +192,17 @@ fn agents_prefix(app: &AppHandle) -> Result<std::path::PathBuf, String> {
 #[tauri::command]
 async fn list_agents(app: AppHandle) -> Result<Vec<AgentRow>, String> {
     let prefix = agents_prefix(&app)?;
-    Ok(opentag_core::agents::BASELINE
+    Ok(acp_agents::HARNESSES
         .iter()
-        .map(|p| AgentRow {
-            name: p.name.into(),
-            label: p.label.into(),
-            package: p.package.into(),
-            docs_url: p.docs_url.into(),
-            resolved: opentag_core::agents::resolve(p.command, Some(&prefix))
+        // Only what this runner can offer to install: the panel's whole job is
+        // a button, and an agent with no package has nothing behind one.
+        .filter(|h| h.package.is_some())
+        .map(|h| AgentRow {
+            name: h.id.into(),
+            label: h.name.into(),
+            package: h.package.unwrap_or_default().into(),
+            docs_url: h.docs_url.into(),
+            resolved: acp_agents::resolve(h.command().0, Some(&prefix))
                 .map(|path| path.display().to_string()),
         })
         .collect())
@@ -209,19 +212,21 @@ async fn list_agents(app: AppHandle) -> Result<Vec<AgentRow>, String> {
 /// binary that lands there. Nothing is installed until this is pressed.
 #[tauri::command]
 async fn install_agent(app: AppHandle, name: String) -> Result<AgentRow, String> {
-    let profile =
-        opentag_core::agents::profile_for(&name).ok_or_else(|| format!("unknown agent: {name}"))?;
+    let profile = acp_agents::harness(&name).ok_or_else(|| format!("unknown agent: {name}"))?;
+    let package = profile
+        .package
+        .ok_or_else(|| format!("{} is not installed this way", profile.name))?;
     let prefix = agents_prefix(&app)?;
 
     // A .app launched from Finder has a bare PATH — npm lives in Homebrew or
     // nvm, neither of which is in it. Ask the login shell where things are.
-    let path = opentag_core::agents::spawn_path(Some(&prefix));
-    let npm = opentag_core::agents::resolve("npm", None)
+    let path = acp_agents::spawn_path(Some(&prefix));
+    let npm = acp_agents::resolve("npm", None)
         .ok_or_else(|| "npm was not found on this machine — install Node.js first".to_string())?;
     let output = tokio::process::Command::new(&npm)
         .args(["install", "-g", "--prefix"])
         .arg(&prefix)
-        .arg(profile.package)
+        .arg(package)
         .env("PATH", &path)
         .output()
         .await
@@ -234,26 +239,22 @@ async fn install_agent(app: AppHandle, name: String) -> Result<AgentRow, String>
             .to_string());
     }
 
-    let resolved =
-        opentag_core::agents::resolve(profile.command, Some(&prefix)).ok_or_else(|| {
-            format!(
-                "{} installed but {} not found",
-                profile.package, profile.command
-            )
-        })?;
+    let (command, command_args) = profile.command();
+    let resolved = acp_agents::resolve(command, Some(&prefix))
+        .ok_or_else(|| format!("{package} installed but {command} not found"))?;
 
     // Record the absolute path: the runner spawns the adapter itself and its
     // PATH is the desktop session's, which need not contain our prefix.
     let mut cfg = RunnerConfig::load().map_err(|e| e.to_string())?;
     let command = resolved.display().to_string();
-    let args: Vec<String> = profile.args.iter().map(|a| (*a).to_string()).collect();
-    match cfg.agents.iter_mut().find(|a| a.name == profile.name) {
+    let args: Vec<String> = command_args.iter().map(|a| (*a).to_string()).collect();
+    match cfg.agents.iter_mut().find(|a| a.name == profile.id) {
         Some(entry) => {
             entry.command = command.clone();
             entry.args = args;
         }
         None => cfg.agents.push(opentag_core::config::AgentEntry {
-            name: profile.name.into(),
+            name: profile.id.into(),
             command: command.clone(),
             args,
         }),
@@ -266,9 +267,9 @@ async fn install_agent(app: AppHandle, name: String) -> Result<AgentRow, String>
     let _ = app.emit("status-changed", ());
 
     Ok(AgentRow {
-        name: profile.name.into(),
-        label: profile.label.into(),
-        package: profile.package.into(),
+        name: profile.id.into(),
+        label: profile.name.into(),
+        package: package.into(),
         docs_url: profile.docs_url.into(),
         resolved: Some(command),
     })

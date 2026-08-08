@@ -8,6 +8,7 @@ tauri-build = { version = "2", features = [] }
 
 [dependencies]
 opentag-core = { path = "../../../crates/opentag-core" }
+acp-agents = { git = "https://github.com/farol-team/acp-agents", tag = "v0.1.1" }
 tauri = { version = "2", features = ["tray-icon"] }
 tauri-plugin-opener = "2"
 tauri-plugin-updater = "2"

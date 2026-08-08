@@ -47,6 +47,19 @@ pub struct AgentEntry {
     pub args: Vec<String>,
 }
 
+impl From<&acp_agents::Harness> for AgentEntry {
+    /// What the catalogue says this agent is called and what would speak ACP
+    /// for it once installed — not a claim that it is here.
+    fn from(harness: &acp_agents::Harness) -> Self {
+        let (command, args) = harness.command();
+        Self {
+            name: harness.id.into(),
+            command: command.into(),
+            args: args.iter().map(|a| (*a).to_string()).collect(),
+        }
+    }
+}
+
 impl Default for RunnerConfig {
     fn default() -> Self {
         Self {
@@ -55,14 +68,7 @@ impl Default for RunnerConfig {
             workspace_id: None,
             // The pinned ACP adapters; none of them ships with the runner, so
             // an entry here is an offer, not a promise that it is installed.
-            agents: crate::agents::BASELINE
-                .iter()
-                .map(|p| AgentEntry {
-                    name: p.name.into(),
-                    command: p.command.into(),
-                    args: p.args.iter().map(|a| (*a).to_string()).collect(),
-                })
-                .collect(),
+            agents: acp_agents::HARNESSES.iter().map(AgentEntry::from).collect(),
             root_dir: crate::workspace::default_root(),
             bindings: std::collections::HashMap::new(),
             allowed_cwds: vec![],
@@ -106,16 +112,19 @@ impl RunnerConfig {
         self.agents.retain(|a| !RETIRED.contains(&a.name.as_str()));
         // Whatever the catalog offers should be listed, even if absent: the
         // panel shows it as installable and `installed_agent_names` filters.
-        for profile in crate::agents::BASELINE {
-            if !self.agents.iter().any(|a| a.name == profile.name) {
-                self.agents.push(AgentEntry {
-                    name: profile.name.into(),
-                    command: profile.command.into(),
-                    args: profile.args.iter().map(|a| (*a).to_string()).collect(),
-                });
+        for harness in acp_agents::HARNESSES {
+            if !self.agents.iter().any(|a| a.name == harness.id) {
+                self.agents.push(AgentEntry::from(harness));
             }
         }
         self.agents.len() != before
+    }
+
+    /// Where the ACP agent process groups this runner starts are written
+    /// down, so a launch after a crash can clean up what no destructor got to.
+    pub fn agent_registry_path() -> Option<PathBuf> {
+        ProjectDirs::from("team", "farol", "opentag-runner")
+            .map(|dirs| dirs.config_dir().join("acp-agents.json"))
     }
 
     pub fn save(&self) -> Result<()> {
@@ -152,7 +161,7 @@ impl RunnerConfig {
     pub fn installed_agent_names(&self, prefix: Option<&std::path::Path>) -> Vec<String> {
         self.agents
             .iter()
-            .filter(|a| crate::agents::is_installed(&a.command, prefix))
+            .filter(|a| acp_agents::installed(&a.command, prefix))
             .map(|a| a.name.clone())
             .collect()
     }

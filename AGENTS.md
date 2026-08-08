@@ -64,8 +64,13 @@ OpenViking MCP endpoint via `AssignTurn.memory`.
 
 ### runner/ (Rust, edition 2021)
 - `crates/opentag-core/src/` — `protocol.rs` (message contract, serde tagged union),
-  `acp.rs` (ACP client), `cloud.rs` (WS loop with reconnect/backoff), `session.rs`
-  (SessionManager), `config.rs` (config + OS keychain for the token).
+  `cloud.rs` (WS loop with reconnect/backoff), `session.rs` (SessionManager),
+  `config.rs` (config + OS keychain for the token).
+- Speaking ACP comes from [`farol-team/acp-agents`](https://github.com/farol-team/acp-agents),
+  pinned by tag and shared with WorkRoom and gilb: `acp-client` (spawn, JSON-RPC,
+  sessions, process groups) and `acp-agents` (which agents speak ACP, and where
+  their binaries are). Protocol-level fixes go there, with a test; `session.rs`
+  keeps the policy — the cwd allowlist, `auto_allowed`, memory, rendering.
 - `crates/opentag-core/examples/headless.rs` — headless runner without the Tauri UI
   (dev debugging and E2E tests).
 - `apps/desktop/` — Tauri 2: `ui/index.html` (no bundler, withGlobalTauri),

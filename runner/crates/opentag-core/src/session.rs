@@ -1,17 +1,28 @@
-//! SessionManager: executes cloud-assigned tasks on local ACP agents.
-//! One task = one ACP session bound to a Slack thread.
+//! SessionManager: executes cloud-assigned turns on local ACP agents.
+//! One turn = one ACP session bound to a Slack thread.
+//!
+//! Speaking ACP is not this crate's job any more: the client, the agent
+//! catalogue and the process-group bookkeeping live in `acp-client` /
+//! `acp-agents`, shared with the other products that reach a local agent the
+//! same way. What is here is OpenTag's own half — which directories a turn may
+//! run in, which permission requests are worth a human's attention, how team
+//! memory is handed to the agent, and how all of it renders into a thread.
 
-use crate::acp::{AcpClient, AcpEvent};
-use crate::cloud::CloudSender;
-use crate::config::RunnerConfig;
-use crate::protocol::{AssignTurn, CloudMessage, TurnEvent, TurnEventKind, TurnResult, TurnStatus};
-use serde_json::json;
+use acp_client::{
+    http_mcp_server_with_bearer, Agent, Config, Event, EventKind, PermissionPolicy,
+    PermissionRequest, Session, SessionOpts,
+};
+use anyhow::Result;
 use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::Arc;
 use tokio::sync::{mpsc, Mutex};
 use tracing::{error, info, warn};
 use uuid::Uuid;
+
+use crate::cloud::CloudSender;
+use crate::config::RunnerConfig;
+use crate::protocol::{AssignTurn, CloudMessage, TurnEvent, TurnEventKind, TurnResult, TurnStatus};
 
 /// How long a permission request may wait for a human before it is refused.
 const PERMISSION_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(600);
@@ -44,25 +55,36 @@ fn auto_allowed(title: &str, tool_kind: &str) -> bool {
     title.contains(MEMORY_SERVER) && !title.contains(char::is_whitespace)
 }
 
-struct RunningTask {
-    client: Arc<AcpClient>,
-    session_id: Option<String>,
-    /// Pending permission: ACP JSON-RPC request id + optionId для approve/deny.
-    pending_permissions: HashMap<String, (u64, String, String)>,
+struct RunningTurn {
+    /// Held for its lifetime: dropping it kills the agent and the whole
+    /// wrapper chain behind it.
+    agent: Arc<Agent>,
+    session: Arc<Session>,
+    /// Requests waiting on a button in Slack, by the id sent with the event.
+    pending: HashMap<String, PermissionRequest>,
 }
 
 pub struct SessionManager {
     config: RunnerConfig,
     cloud: CloudSender,
-    tasks: Arc<Mutex<HashMap<Uuid, Arc<Mutex<RunningTask>>>>>,
+    turns: Arc<Mutex<HashMap<Uuid, Arc<Mutex<RunningTurn>>>>>,
 }
 
 impl SessionManager {
     pub fn new(config: RunnerConfig, cloud: CloudSender) -> Self {
+        // Agents a previous run left behind, before we start any of our own.
+        // A crash or a kill -9 runs no destructor, and an adapter reached
+        // through a package runner outlives the process we spawned.
+        if let Some(registry) = RunnerConfig::agent_registry_path() {
+            match acp_client::reap(&registry) {
+                0 => {}
+                n => info!("reaped {n} agent process group(s) left by a previous run"),
+            }
+        }
         Self {
             config,
             cloud,
-            tasks: Arc::new(Mutex::new(HashMap::new())),
+            turns: Arc::new(Mutex::new(HashMap::new())),
         }
     }
 
@@ -119,7 +141,7 @@ impl SessionManager {
                 self.config
                     .agents
                     .iter()
-                    .find(|a| crate::agents::is_installed(&a.command, None))
+                    .find(|a| acp_agents::installed(&a.command, None))
             }) {
             Some(a) => a.clone(),
             None => {
@@ -132,15 +154,6 @@ impl SessionManager {
                 return;
             }
         };
-
-        let (ev_tx, mut ev_rx) = mpsc::channel::<AcpEvent>(64);
-
-        // Env injection for the memory layer: agents that support
-        // OpenViking pick it up via MCP server config in session/new.
-        // PATH is not decoration: an adapter's shebang resolves `node` through
-        // it, and a desktop app's own PATH has neither Homebrew nor nvm in it.
-        let env: Vec<(String, String)> =
-            vec![("PATH".to_string(), crate::agents::spawn_path(None))];
 
         // Whatever the person attached lands next to the work, before the
         // agent starts: a prompt that mentions a file it cannot open is worse
@@ -164,65 +177,84 @@ impl SessionManager {
             }
         };
 
-        let client = match AcpClient::spawn(&agent.command, &agent.args, &cwd, &env, ev_tx).await {
+        let (ev_tx, ev_rx) = mpsc::channel::<Event>(64);
+
+        // PATH is not decoration: an adapter's shebang resolves `node` through
+        // it, and a desktop app's own PATH has neither Homebrew nor nvm in it.
+        let mut config = Config::new(&agent.command)
+            .args(agent.args.clone())
+            .cwd(&cwd)
+            .env(
+                "PATH",
+                acp_agents::spawn_path(None).to_string_lossy().to_string(),
+            )
+            .client("opentag-runner", env!("CARGO_PKG_VERSION"))
+            // Destructive actions are a person's call, through the buttons in
+            // the thread; what may be answered without one is `auto_allowed`.
+            .permissions(PermissionPolicy::Ask);
+        if let Some(registry) = RunnerConfig::agent_registry_path() {
+            config = config.registry(registry);
+        }
+
+        let client = match Agent::launch(config, ev_tx).await {
             Ok(c) => c,
             Err(e) => {
-                self.finish(
-                    task.turn_id,
-                    TurnStatus::Failed,
-                    None,
-                    Some(format!("spawn: {e}")),
-                );
+                // The message already carries whatever the agent said on its
+                // way down — a missing credential, a config it could not read
+                // — which used to be inherited into the runner's own stderr
+                // and never reached the thread.
+                self.finish(task.turn_id, TurnStatus::Failed, None, Some(e.to_string()));
                 return;
             }
         };
 
-        if let Err(e) = client.initialize().await {
-            self.finish(
-                task.turn_id,
-                TurnStatus::Failed,
-                None,
-                Some(format!("initialize: {e}")),
-            );
-            return;
+        // MCP servers for the agent: the team memory endpoint.
+        let mut opts = SessionOpts::default().cwd(&cwd);
+        if let Some(mem) = &task.memory {
+            if !client.handshake().mounts_http_mcp() {
+                // Not fatal — an adapter that says nothing about its
+                // capabilities may still mount one — but it is the difference
+                // between "the model was unhelpful" and "the agent never had
+                // the memory we promised it".
+                warn!(
+                    "{} does not report that it can mount an HTTP MCP server; \
+                     team memory may not reach it",
+                    agent.command
+                );
+            }
+            opts = opts.mcp(http_mcp_server_with_bearer(
+                MEMORY_SERVER,
+                &mem.mcp_url,
+                &mem.user_key,
+            ));
         }
 
-        // MCP servers for the agent: team memory endpoint. `headers` is an
-        // array of {name, value} — ACP's HttpMcpServer, not a JSON map. The
-        // shape is not cosmetic: opencode rejects session/new outright, and
-        // claude-agent-acp accepts the request but silently drops the server,
-        // so the agent comes up with no memory tools at all.
-        let mcp_servers = match &task.memory {
-            Some(mem) => json!([{
-                "name": MEMORY_SERVER,
-                "type": "http",
-                "url": mem.mcp_url,
-                "headers": [
-                    { "name": "Authorization", "value": format!("Bearer {}", mem.user_key) }
-                ]
-            }]),
-            None => json!([]),
-        };
-
-        // The resolved directory, not what the cloud asked for: they differ
-        // whenever the cloud had no opinion and this machine chose.
-        let cwd_str = cwd.to_string_lossy().to_string();
-        // A session that never opened cannot be prompted: prompting with an
-        // empty id used to fail deep inside the agent, with a message nobody
-        // could trace back to session/new.
-        let session_id = match &task.resume_session {
-            Some(sid) => {
-                if let Err(e) = client.load_session(sid, &cwd_str, mcp_servers).await {
-                    // Kept as-is: some adapters take a prompt for a session
-                    // they never loaded. Worth seeing in the log either way.
-                    warn!("session/load failed for {sid}: {e}");
-                }
-                Some(sid.clone())
-            }
-            None => match client.new_session(&cwd_str, mcp_servers).await {
-                Ok(sid) => Some(sid),
+        // A session that never opened cannot be prompted.
+        let session = match &task.resume_session {
+            Some(sid) => match client.load_session(sid, opts.clone()).await {
+                Ok(session) => session,
                 Err(e) => {
-                    client.shutdown().await;
+                    // A thread whose session the agent has forgotten starts a
+                    // new one rather than failing: the history is lost, the
+                    // answer is not.
+                    warn!("session/load failed for {sid}: {e} — opening a new session");
+                    match client.new_session(opts).await {
+                        Ok(session) => session,
+                        Err(e) => {
+                            self.finish(
+                                task.turn_id,
+                                TurnStatus::Failed,
+                                None,
+                                Some(format!("session/new: {e}")),
+                            );
+                            return;
+                        }
+                    }
+                }
+            },
+            None => match client.new_session(opts).await {
+                Ok(session) => session,
+                Err(e) => {
                     self.finish(
                         task.turn_id,
                         TurnStatus::Failed,
@@ -234,96 +266,44 @@ impl SessionManager {
             },
         };
 
-        let client = Arc::new(client);
-        let running = Arc::new(Mutex::new(RunningTask {
-            client: client.clone(),
-            session_id: session_id.clone(),
-            pending_permissions: HashMap::new(),
+        let session_id = Some(session.id().to_string());
+        let session = Arc::new(session);
+        let running = Arc::new(Mutex::new(RunningTurn {
+            agent: client,
+            session: session.clone(),
+            pending: HashMap::new(),
         }));
-        self.tasks
+        self.turns
             .lock()
             .await
             .insert(task.turn_id, running.clone());
 
-        // Forward ACP events to the cloud (cloud renders them into Slack).
-        let cloud = self.cloud.clone();
-        let turn_id = task.turn_id;
-        tokio::spawn(async move {
-            while let Some(ev) = ev_rx.recv().await {
-                let (kind, text, permission_id) = match ev {
-                    AcpEvent::MessageChunk(t) => (TurnEventKind::AgentMessageChunk, t, None),
-                    AcpEvent::ToolCall { title } => (TurnEventKind::ToolCall, title, None),
-                    AcpEvent::ToolCallUpdate { title } => {
-                        (TurnEventKind::ToolCallUpdate, title, None)
-                    }
-                    AcpEvent::Plan(t) => (TurnEventKind::Plan, t, None),
-                    AcpEvent::PermissionRequest {
-                        request_id,
-                        description,
-                        tool_kind,
-                        allow_id,
-                        reject_id,
-                    } => {
-                        if auto_allowed(&description, &tool_kind) {
-                            info!("permission auto-allowed: {description} (kind {tool_kind})");
-                            let client = running.lock().await.client.clone();
-                            if let Err(e) = client.respond_permission(request_id, &allow_id).await {
-                                error!("auto-allow for {description} failed: {e}");
-                            }
-                            continue;
-                        }
-                        let pid = request_id.to_string();
-                        running
-                            .lock()
-                            .await
-                            .pending_permissions
-                            .insert(pid.clone(), (request_id, allow_id, reject_id.clone()));
-                        // Nobody may answer — a misconfigured Slack app delivers
-                        // the click nowhere, and the agent would hold the thread
-                        // forever. Silence becomes a refusal, not a deadlock.
-                        let task = running.clone();
-                        let pid_timeout = pid.clone();
-                        tokio::spawn(async move {
-                            tokio::time::sleep(PERMISSION_TIMEOUT).await;
-                            let mut t = task.lock().await;
-                            if t.pending_permissions.remove(&pid_timeout).is_some() {
-                                tracing::warn!(
-                                    "permission {pid_timeout} unanswered \
-                                    for {}s — denying",
-                                    PERMISSION_TIMEOUT.as_secs()
-                                );
-                                let _ = t.client.respond_permission(request_id, &reject_id).await;
-                            }
-                        });
-                        (TurnEventKind::PermissionRequest, description, Some(pid))
-                    }
-                };
-                cloud.send(&CloudMessage::TurnEvent(TurnEvent {
-                    turn_id,
-                    kind,
-                    text,
-                    permission_id,
-                }));
-            }
-        });
+        // Forward what the agent says to the cloud, which renders it into the
+        // thread.
+        tokio::spawn(forward_events(
+            ev_rx,
+            running.clone(),
+            self.cloud.clone(),
+            task.turn_id,
+        ));
 
-        info!("task {} started, session {:?}", task.turn_id, session_id);
-        let sid = session_id.clone().unwrap_or_default();
-        // prompt ждёт финальный ответ агента — потенциально минуты.
-        // Мьютекса на клиенте нет: respond_permission/cancel пишут в stdin
-        // параллельно через свой мьютекс внутри AcpClient.
-        let result = client.prompt(&sid, &prompt).await;
+        info!("turn {} started, session {:?}", task.turn_id, session_id);
+        // The prompt waits for the agent's final answer — potentially minutes,
+        // bounded by the client's idle and wall-clock deadlines. No lock is
+        // held on it: answering a permission request and cancelling both write
+        // to the same stdin through the client's own.
+        let result = session.prompt(&prompt).await;
 
-        // If the entry is gone, the task was cancelled: the agent process
-        // is already dead and the Cancelled result already sent.
-        let Some(entry) = self.tasks.lock().await.remove(&task.turn_id) else {
+        // If the entry is gone, the turn was cancelled: the agent is already
+        // dead and the Cancelled result already sent.
+        let Some(entry) = self.turns.lock().await.remove(&task.turn_id) else {
             return;
         };
-        // One task = one process: reap the agent, the session lives on
-        // disk and can be resumed by a fresh process via session/load.
-        entry.lock().await.client.shutdown().await;
+        // One turn = one process: reap the agent, the session lives on disk
+        // and can be resumed by a fresh process via session/load.
+        entry.lock().await.agent.stop();
         match result {
-            Ok(()) => self.finish(task.turn_id, TurnStatus::Done, session_id, None),
+            Ok(_) => self.finish(task.turn_id, TurnStatus::Done, session_id, None),
             Err(e) => self.finish(
                 task.turn_id,
                 TurnStatus::Failed,
@@ -340,7 +320,7 @@ impl SessionManager {
         &self,
         task: &AssignTurn,
         cwd: &std::path::Path,
-    ) -> anyhow::Result<Vec<PathBuf>> {
+    ) -> Result<Vec<PathBuf>> {
         if task.attachments.is_empty() {
             return Ok(vec![]);
         }
@@ -377,31 +357,40 @@ impl SessionManager {
 
     /// Slack pressed Approve/Deny — relay into the agent.
     pub async fn handle_permission(&self, turn_id: Uuid, permission_id: String, approved: bool) {
-        let tasks = self.tasks.lock().await;
-        if let Some(task) = tasks.get(&turn_id) {
-            let mut t = task.lock().await;
-            if let Some((request_id, allow_id, reject_id)) =
-                t.pending_permissions.remove(&permission_id)
-            {
-                let option_id = if approved { allow_id } else { reject_id };
-                let _ = t.client.respond_permission(request_id, &option_id).await;
-            }
+        let turns = self.turns.lock().await;
+        let Some(turn) = turns.get(&turn_id) else {
+            return;
+        };
+        let mut turn = turn.lock().await;
+        let Some(request) = turn.pending.remove(&permission_id) else {
+            return;
+        };
+        let answered = if approved {
+            request.allow().await
+        } else {
+            request.deny().await
+        };
+        if let Err(e) = answered {
+            // An agent offering neither an allow nor a reject option is still
+            // blocked on this; cancelling is the answer the protocol has for
+            // "nobody chose".
+            warn!("permission {permission_id}: {e} — cancelling instead");
+            let _ = request.cancel().await;
         }
     }
 
     /// Slack pressed Stop: cancel the session, then kill the agent
     /// process — Stop must actually stop work on the machine.
     pub async fn handle_cancel(&self, turn_id: Uuid) {
-        let entry = self.tasks.lock().await.remove(&turn_id);
-        let Some(task) = entry else { return };
-        let (session_id, client) = {
-            let t = task.lock().await;
-            (t.session_id.clone(), t.client.clone())
+        let entry = self.turns.lock().await.remove(&turn_id);
+        let Some(turn) = entry else { return };
+        let (session, agent) = {
+            let t = turn.lock().await;
+            (t.session.clone(), t.agent.clone())
         };
-        if let Some(sid) = &session_id {
-            let _ = client.cancel(sid).await;
-        }
-        client.shutdown().await;
+        let session_id = Some(session.id().to_string());
+        let _ = session.cancel().await;
+        agent.stop();
         self.finish(turn_id, TurnStatus::Cancelled, session_id, None);
     }
 
@@ -422,10 +411,114 @@ impl SessionManager {
 
     /// Graceful shutdown: kill all agent processes.
     pub async fn shutdown(&self) {
-        for (_, task) in self.tasks.lock().await.drain() {
-            task.lock().await.client.shutdown().await;
+        for (_, turn) in self.turns.lock().await.drain() {
+            turn.lock().await.agent.stop();
         }
     }
+}
+
+/// Everything the agent says, in the vocabulary the thread renders.
+///
+/// Thoughts, usage and session options are dropped: a Slack thread is the
+/// answer and the steps, not the agent's inner monologue.
+async fn forward_events(
+    mut events: mpsc::Receiver<Event>,
+    turn: Arc<Mutex<RunningTurn>>,
+    cloud: CloudSender,
+    turn_id: Uuid,
+) {
+    while let Some(event) = events.recv().await {
+        let (kind, text, permission_id) = match event.kind {
+            EventKind::Text(text) => (TurnEventKind::AgentMessageChunk, text, None),
+            EventKind::Tool {
+                title,
+                update: false,
+                ..
+            } => (TurnEventKind::ToolCall, title, None),
+            EventKind::Tool {
+                title,
+                update: true,
+                ..
+            } => (TurnEventKind::ToolCallUpdate, title, None),
+            EventKind::Plan(entries) => {
+                let text = entries
+                    .iter()
+                    .map(|e| match &e.status {
+                        Some(status) => format!("- {} ({status})", e.content),
+                        None => format!("- {}", e.content),
+                    })
+                    .collect::<Vec<_>>()
+                    .join("\n");
+                (TurnEventKind::Plan, text, None)
+            }
+            EventKind::Permission(request) => {
+                match handle_permission_request(request, &turn).await {
+                    Some(announced) => announced,
+                    None => continue,
+                }
+            }
+            // The process is gone; the prompt this turn is waiting on fails on
+            // its own, with the diagnostics attached.
+            EventKind::Closed { diagnostics } if !diagnostics.is_empty() => {
+                warn!(
+                    "the agent stopped; it last said: {}",
+                    diagnostics.join("\n")
+                );
+                continue;
+            }
+            _ => continue,
+        };
+        cloud.send(&CloudMessage::TurnEvent(TurnEvent {
+            turn_id,
+            kind,
+            text,
+            permission_id,
+        }));
+    }
+}
+
+/// Answer it ourselves where a button would teach nothing, or park it for a
+/// human and announce it.
+async fn handle_permission_request(
+    request: PermissionRequest,
+    turn: &Arc<Mutex<RunningTurn>>,
+) -> Option<(TurnEventKind, String, Option<String>)> {
+    let description = request.title.clone();
+    if auto_allowed(&description, &request.tool_kind) {
+        info!(
+            "permission auto-allowed: {description} (kind {})",
+            request.tool_kind
+        );
+        if let Err(e) = request.allow().await {
+            error!("auto-allow for {description} failed: {e}");
+            let _ = request.cancel().await;
+        }
+        return None;
+    }
+
+    let id = acp_client::wire::id_key(&request.id);
+    turn.lock().await.pending.insert(id.clone(), request);
+
+    // Nobody may answer — a misconfigured Slack app delivers the click
+    // nowhere, and the agent would hold the thread forever. Silence becomes a
+    // refusal, not a deadlock.
+    let waiting = turn.clone();
+    let timed_out = id.clone();
+    tokio::spawn(async move {
+        tokio::time::sleep(PERMISSION_TIMEOUT).await;
+        let request = waiting.lock().await.pending.remove(&timed_out);
+        if let Some(request) = request {
+            warn!(
+                "permission {timed_out} unanswered for {}s — denying",
+                PERMISSION_TIMEOUT.as_secs()
+            );
+            if request.deny().await.is_err() {
+                let _ = request.cancel().await;
+            }
+        }
+    });
+
+    Some((TurnEventKind::PermissionRequest, description, Some(id)))
 }
 
 #[cfg(test)]
