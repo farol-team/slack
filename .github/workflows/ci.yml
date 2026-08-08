@@ -84,12 +84,9 @@ jobs:
       - name: Types
         run: npm run check
         working-directory: app
-      # `npm run lint` is deliberately not here yet: it fails on this tree
-      # with eleven errors, nine of them the fast-refresh rule against the
-      # vendored shadcn components nobody hand-maintains. Turning it on today
-      # would mean a red master on the day CI arrives, which is how people
-      # learn to merge past a red tick. Written down instead (#34) and
-      # switched on in the change that clears them.
+      - name: Lint
+        run: npm run lint
+        working-directory: app
       - name: Specs
         run: npm test -- --passWithNoTests
         working-directory: app

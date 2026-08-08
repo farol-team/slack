@@ -117,15 +117,15 @@ function AuthLayoutContent({
   const activeMenuItem = menuItems.find(item => item.path === location.pathname);
   const isMobile = useIsMobile();
 
-  useEffect(() => {
-    if (isCollapsed) {
-      setIsResizing(false);
-    }
-  }, [isCollapsed]);
+  // A collapsed sidebar is not one anybody is dragging: the handle is hidden
+  // and `onMouseDown` refuses. Derived rather than reset inside an effect —
+  // setting state there is a second render for something that was already
+  // knowable in the first.
+  const resizing = isResizing && !isCollapsed;
 
   useEffect(() => {
     const handleMouseMove = (e: MouseEvent) => {
-      if (!isResizing) return;
+      if (!resizing) return;
 
       const sidebarLeft = sidebarRef.current?.getBoundingClientRect().left ?? 0;
       const newWidth = e.clientX - sidebarLeft;
@@ -138,7 +138,7 @@ function AuthLayoutContent({
       setIsResizing(false);
     };
 
-    if (isResizing) {
+    if (resizing) {
       document.addEventListener("mousemove", handleMouseMove);
       document.addEventListener("mouseup", handleMouseUp);
       document.body.style.cursor = "col-resize";
@@ -151,7 +151,7 @@ function AuthLayoutContent({
       document.body.style.cursor = "";
       document.body.style.userSelect = "";
     };
-  }, [isResizing, setSidebarWidth]);
+  }, [resizing, setSidebarWidth]);
 
   return (
     <>
