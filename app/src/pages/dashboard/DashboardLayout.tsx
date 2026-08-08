@@ -1,8 +1,7 @@
 import { NavLink, Outlet, useNavigate } from "react-router";
 import { useAuth } from "@/hooks/useAuth";
-import { trpc } from "@/providers/trpc";
+import { useWorkspaceSelection } from "@/hooks/useWorkspaceSelection";
 import { Button } from "@/components/ui/button";
-import { useState } from "react";
 import {
   Brain, LayoutDashboard, TerminalSquare, Database, Settings, LogOut,
   MessageSquare,
@@ -17,15 +16,6 @@ const menu = [
   { to: "/dashboard/settings", label: "Settings", icon: Settings },
 ];
 
-export function useWorkspaceSelection() {
-  const { data: workspaces, isLoading } = trpc.workspace.list.useQuery();
-  const [selectedId, setSelectedId] = useState<number | null>(null);
-  const selected =
-    workspaces?.find((w) => w.id === selectedId) ?? workspaces?.[0] ?? null;
-  return { workspaces: workspaces ?? [], selected, setSelectedId, isLoading };
-}
-
-export type WorkspaceSelection = ReturnType<typeof useWorkspaceSelection>;
 
 export default function DashboardLayout() {
   const { user, logout } = useAuth({ redirectOnUnauthenticated: true });
